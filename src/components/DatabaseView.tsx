@@ -123,6 +123,14 @@ export function DatabaseView({ lang, dbStatus, onRefresh, onNotify }: DatabaseVi
           <p className="banner-sub">{t.subtitle}</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <a
+            href="/api/export-project"
+            download="sideout-pb-scoring.zip"
+            className="btn btn-primary btn-sm"
+            style={{ textDecoration: 'none' }}
+          >
+            <Download size={15} /> {lang === 'ja' ? 'プロジェクトZIP' : 'Project ZIP'}
+          </a>
           <button
             type="button"
             className="btn btn-secondary btn-sm"

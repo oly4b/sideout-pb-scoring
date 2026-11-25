@@ -3,5 +3,6 @@ dist/
 .env
 .env.local
 server/data/db.json
+server/data/*.zip
 *.log
 .DS_Store

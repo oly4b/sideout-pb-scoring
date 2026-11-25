@@ -46,6 +46,15 @@ app.get('/api/export', async (_req, res) => {
   }
 });
 
+app.get('/api/export-project', (_req, res) => {
+  const zipPath = path.resolve(process.cwd(), 'server/data/sideout-pb-scoring.zip');
+  if (!fs.existsSync(zipPath)) {
+    res.status(404).json({ error: 'Project archive not found' });
+    return;
+  }
+  res.download(zipPath, 'sideout-pb-scoring.zip');
+});
+
 // Players
 app.get('/api/players', async (_req, res) => {
   try {
