@@ -1,0 +1,18 @@
+{
+  "name": "桃dinks — Sideout Pickleball",
+  "short_name": "桃dinks",
+  "description": "桃dinks live pickleball court scorekeeper, session rotations, and Supabase game history.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F3F6FA",
+  "theme_color": "#132B4F",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
