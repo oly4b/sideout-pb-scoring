@@ -51,20 +51,26 @@ const FORMAT_META: Record<
   rotating_partners: {
     labelEn: 'Rotating Partners',
     labelJa: 'パートナー回転',
-    descEn: 'New partner every round with balanced sit-outs & individual standings',
-    descJa: '毎ラウンド新しいペアで対戦・休憩バランス自動調整',
+    descEn: 'Drop-in rotation with new partners each round & balanced sit-outs (min 4)',
+    descJa: '毎ラウンド新しいペアで対戦・試合数と待機を均等化（最低4名）',
   },
   king_of_court: {
     labelEn: 'King of the Court',
     labelJa: 'キング・オブ・コート',
-    descEn: 'Winners move up a court and split partners; losers move down',
-    descJa: '勝者が上位コートへ昇格＆ペア分割、敗者は下位コートへ移動',
+    descEn: 'Winners move up a court and split partners; losers move down (min 4)',
+    descJa: '勝者が上位コートへ昇格＆ペア分割、敗者は下位コートへ移動（最低4名）',
   },
   set_partners: {
     labelEn: 'Set Partners',
     labelJa: '固定ペア総当り',
-    descEn: 'Fixed pairs stay together and rotate opponents across rounds',
-    descJa: '固定ペアのまま対戦相手をローテーション',
+    descEn: 'Fixed pairs stay together and rotate opponents across rounds (min 4)',
+    descJa: '固定ペアのまま対戦相手をローテーション（最低4名）',
+  },
+  singles: {
+    labelEn: '1v1 Singles',
+    labelJa: '1v1 シングルス',
+    descEn: '1v1 matchups rotating opponents & balanced sit-outs (min 3)',
+    descJa: '1対1の対戦相手ローテーション・待機バランス自動調整（最低3名）',
   },
   open_play: {
     labelEn: 'Open Play',
@@ -73,6 +79,13 @@ const FORMAT_META: Record<
     descJa: '試合数と待機時間を均等化するドロップイン形式',
   },
 };
+
+const SELECTABLE_FORMATS: SessionFormat[] = [
+  'rotating_partners',
+  'king_of_court',
+  'set_partners',
+  'singles',
+];
 
 const AVATAR_COLORS = ['#1D4ED8', '#15803D', '#E25747', '#B45309', '#0E7490', '#BE185D', '#3F6212'];
 
@@ -115,6 +128,7 @@ export function SessionsView({
 
   const [title, setTitle] = useState('');
   const [venueChoice, setVenueChoice] = useState<string>('mabi');
+  const [manualCourtType, setManualCourtType] = useState<'indoor' | 'outdoor'>('indoor');
   const [location, setLocation] = useState('');
   const [format, setFormat] = useState<SessionFormat>('rotating_partners');
   const [courtsCount, setCourtsCount] = useState(2);
@@ -128,8 +142,13 @@ export function SessionsView({
   const [schedulerSessions, setSchedulerSessions] = useState<SchedulerBookedSession[]>([]);
   const [syncingScheduler, setSyncingScheduler] = useState(false);
   const [expandedGoingKey, setExpandedGoingKey] = useState<string | null>(null);
+  const [showAllSessions, setShowAllSessions] = useState(false);
+  const [showAllBooked, setShowAllBooked] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Session | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [subMatch, setSubMatch] = useState<Match | null>(null);
+  const [subOutId, setSubOutId] = useState<string>('');
+  const [subInId, setSubInId] = useState<string>('');
 
   const loadSchedulerUpcoming = async () => {
     try {
@@ -210,19 +229,28 @@ export function SessionsView({
     }
   };
 
+  const selectableSessions = useMemo(
+    () => sessions.filter((s) => s.status !== 'completed'),
+    [sessions]
+  );
+
   useEffect(() => {
     const targetId =
-      selectedSessionId ?? sessions.find((s) => s.status === 'active')?.id ?? sessions[0]?.id ?? null;
+      (selectedSessionId && selectableSessions.some((s) => s.id === selectedSessionId)
+        ? selectedSessionId
+        : null) ??
+      selectableSessions[0]?.id ??
+      null;
     if (!targetId) {
       setActiveSession(null);
       return;
     }
-    const found = sessions.find((s) => s.id === targetId) ?? null;
+    const found = selectableSessions.find((s) => s.id === targetId) ?? null;
     setActiveSession(found);
     if (found) {
       setViewingRound(found.current_round);
     }
-  }, [sessions, selectedSessionId]);
+  }, [selectableSessions, selectedSessionId]);
 
   const openCreateModal = () => {
     const today = new Date().toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-US', {
@@ -273,18 +301,30 @@ export function SessionsView({
     }
   };
 
+  const minPlayers = format === 'singles' ? 3 : 4;
+  const playersPerCourt = format === 'singles' ? 2 : 4;
+  const maxCourts = Math.max(1, Math.floor(checkedInIds.length / playersPerCourt));
+  const effectiveCourtsCount = Math.min(courtsCount, maxCourts);
+
   const handleCreateSession = async () => {
-    if (!title.trim() || checkedInIds.length < 4) {
-      onNotify('Enter a session title and check in at least 4 players');
+    if (!title.trim() || checkedInIds.length < minPlayers) {
+      onNotify(`Enter a session title and check in at least ${minPlayers} players`);
       return;
     }
     try {
       setBusy(true);
+      const trimmedLoc = location.trim();
+      const formattedLoc =
+        venueChoice === 'other' && trimmedLoc
+          ? /\b(indoor|outdoor)\b|屋内|屋外/i.test(trimmedLoc)
+            ? trimmedLoc
+            : `${trimmedLoc} (${manualCourtType === 'indoor' ? 'Indoor' : 'Outdoor'})`
+          : trimmedLoc;
       const created = await api.createSession({
         title: title.trim(),
-        location: location.trim() || undefined,
+        location: formattedLoc || undefined,
         format,
-        courts_count: courtsCount,
+        courts_count: effectiveCourtsCount,
         scoring_mode: scoringMode,
         target_score: targetScore,
         win_by_two: winByTwo,
@@ -311,6 +351,35 @@ export function SessionsView({
       onNotify(`Round ${res.session.current_round} generated`);
     } catch (err) {
       onNotify(err instanceof Error ? err.message : 'Could not generate next round');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openSubstituteModal = (match: Match) => {
+    const firstOut = match.participants[0]?.player_id ?? '';
+    const matchPlayerIds = new Set(match.participants.map((p) => p.player_id));
+    const defaultIn =
+      sittingOutIds.find((id) => !matchPlayerIds.has(id)) ??
+      activeSession?.players.find((sp) => sp.active && !matchPlayerIds.has(sp.player_id))?.player_id ??
+      '';
+    setSubMatch(match);
+    setSubOutId(firstOut);
+    setSubInId(defaultIn);
+  };
+
+  const handleConfirmSubstitute = async () => {
+    if (!subMatch || !subOutId || !subInId || subOutId === subInId) return;
+    try {
+      setBusy(true);
+      await api.substituteMatchPlayer(subMatch.id, subOutId, subInId);
+      const outName = playerMap.get(subOutId)?.name.split(' ')[0] ?? 'Player';
+      const inName = playerMap.get(subInId)?.name.split(' ')[0] ?? 'Player';
+      setSubMatch(null);
+      await onRefreshAll();
+      onNotify(`Substituted ${outName} → ${inName}`);
+    } catch (err) {
+      onNotify(err instanceof Error ? err.message : 'Failed to substitute player');
     } finally {
       setBusy(false);
     }
@@ -418,19 +487,38 @@ export function SessionsView({
               <div className="section-card-sub">{t.subtitle}</div>
             </div>
           </div>
-          <button
-            type="button"
-            id="btn-new-session"
-            className="btn btn-lime btn-sm"
-            onClick={openCreateModal}
-          >
-            <Plus size={15} /> {t.newSession}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {selectableSessions.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowAllSessions((prev) => !prev)}
+              >
+                {showAllSessions
+                  ? lang === 'ja'
+                    ? '非表示'
+                    : 'Hide all'
+                  : lang === 'ja'
+                    ? `すべて表示 (${selectableSessions.length})`
+                    : `Show all (${selectableSessions.length})`}
+              </button>
+            )}
+            <button
+              type="button"
+              id="btn-new-session"
+              className="btn btn-lime btn-icon btn-sm"
+              onClick={openCreateModal}
+              aria-label={t.newSession}
+              title={t.newSession}
+            >
+              <Plus size={16} />
+            </button>
+          </div>
         </div>
 
-        {sessions.length > 0 && (
-          <div className="section-subbar" style={{ justifyContent: 'flex-start', overflowX: 'auto' }}>
-            {sessions.map((s) => (
+        {selectableSessions.length > 0 && showAllSessions && (
+          <div className="section-subbar" style={{ justifyContent: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+            {selectableSessions.map((s) => (
               <button
                 key={s.id}
                 type="button"
@@ -473,94 +561,112 @@ export function SessionsView({
                 </div>
               </div>
             </div>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => void loadSchedulerUpcoming()}
-              disabled={syncingScheduler}
-            >
-              <RefreshCw size={13} className={syncingScheduler ? 'spin' : ''} />{' '}
-              {lang === 'ja' ? '同期' : 'Sync'}
-            </button>
-          </div>
-          <div className="section-card-body">
-            <div className="grid-2">
-              {schedulerSessions.map((b) => {
-                const yesList = b.attendees.filter((a) => a.status === 'yes');
-                const isGoingOpen = expandedGoingKey === b.date_key;
-                return (
-                  <div key={b.date_key} className="scheduler-booked-card">
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <span className="scheduler-booked-date">
-                          <Calendar size={13} /> {b.date_key}
-                        </span>
-                        <span className="scheduler-booked-time">
-                          <Clock size={12} /> {b.start_hour}:00–{b.end_hour}:00
-                        </span>
-                      </div>
-                      <div className="scheduler-booked-venue">
-                        <MapPin size={13} style={{ color: 'var(--brand-emerald)', flexShrink: 0 }} />
-                        <span>{b.venue_full_name}</span>
-                        <a
-                          href={getSafeMapUrl(b.map_url, b.venue_full_name)}
-                          target="_blank"
-                          rel="noreferrer"
-                          style={{ color: 'var(--sky-accent)', display: 'inline-flex', alignItems: 'center' }}
-                          title={lang === 'ja' ? 'Google マップで開く' : 'Open in Google Maps'}
-                        >
-                          <ExternalLink size={12} />
-                        </a>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
-                        <span className="scheduler-booked-type">
-                          {b.court_type === 'indoor'
-                            ? lang === 'ja'
-                              ? '屋内'
-                              : 'Indoor'
-                            : lang === 'ja'
-                              ? '屋外'
-                              : 'Outdoor'}
-                        </span>
-                        <button
-                          type="button"
-                          className="scheduler-going-pill tactile-press"
-                          style={{ cursor: yesList.length > 0 ? 'pointer' : 'default' }}
-                          aria-expanded={yesList.length > 0 ? isGoingOpen : undefined}
-                          onClick={() => {
-                            if (yesList.length === 0) return;
-                            setExpandedGoingKey((prev) => (prev === b.date_key ? null : b.date_key));
-                          }}
-                          title={
-                            yesList.length > 0
-                              ? lang === 'ja'
-                                ? 'タップして参加者を表示'
-                                : 'Tap to view players'
-                              : undefined
-                          }
-                        >
-                          {lang === 'ja' ? `参加 ${yesList.length}` : `Going: ${yesList.length}`}
-                        </button>
-                      </div>
-                      {isGoingOpen && yesList.length > 0 && (
-                        <div style={{ fontSize: '0.74rem', color: 'var(--ink-secondary)', marginTop: 5 }}>
-                          {yesList.map((a) => a.attendee_name).join(', ')}
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      className="btn btn-lime btn-sm"
-                      onClick={() => void handleLoadBookedSession(b)}
-                      disabled={busy}
-                    >
-                      <Plus size={13} /> {lang === 'ja' ? '読み込む' : 'Use'}
-                    </button>
-                  </div>
-                );
-              })}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowAllBooked((prev) => !prev)}
+              >
+                {showAllBooked
+                  ? lang === 'ja'
+                    ? '非表示'
+                    : 'Hide all'
+                  : lang === 'ja'
+                    ? `すべて表示 (${schedulerSessions.length})`
+                    : `Show all (${schedulerSessions.length})`}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-icon btn-sm"
+                onClick={() => void loadSchedulerUpcoming()}
+                disabled={syncingScheduler}
+                aria-label={lang === 'ja' ? '同期' : 'Sync'}
+                title={lang === 'ja' ? '同期' : 'Sync'}
+              >
+                <RefreshCw size={14} className={syncingScheduler ? 'spin' : ''} />
+              </button>
             </div>
           </div>
+          {showAllBooked && (
+            <div className="section-card-body">
+              <div className="grid-2">
+                {schedulerSessions.map((b) => {
+                  const yesList = b.attendees.filter((a) => a.status === 'yes');
+                  const isGoingOpen = expandedGoingKey === b.date_key;
+                  return (
+                    <div key={b.date_key} className="scheduler-booked-card">
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span className="scheduler-booked-date">
+                            <Calendar size={13} /> {b.date_key}
+                          </span>
+                          <span className="scheduler-booked-time">
+                            <Clock size={12} /> {b.start_hour}:00–{b.end_hour}:00
+                          </span>
+                        </div>
+                        <div className="scheduler-booked-venue">
+                          <MapPin size={13} style={{ color: 'var(--brand-emerald)', flexShrink: 0 }} />
+                          <span>{b.venue_full_name}</span>
+                          <a
+                            href={getSafeMapUrl(b.map_url, b.venue_full_name)}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ color: 'var(--sky-accent)', display: 'inline-flex', alignItems: 'center' }}
+                            title={lang === 'ja' ? 'Google マップで開く' : 'Open in Google Maps'}
+                          >
+                            <ExternalLink size={12} />
+                          </a>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                          <span className="scheduler-booked-type">
+                            {b.court_type === 'indoor'
+                              ? lang === 'ja'
+                                ? '屋内'
+                                : 'Indoor'
+                              : lang === 'ja'
+                                ? '屋外'
+                                : 'Outdoor'}
+                          </span>
+                          <button
+                            type="button"
+                            className="scheduler-going-pill tactile-press"
+                            style={{ cursor: yesList.length > 0 ? 'pointer' : 'default' }}
+                            aria-expanded={yesList.length > 0 ? isGoingOpen : undefined}
+                            onClick={() => {
+                              if (yesList.length === 0) return;
+                              setExpandedGoingKey((prev) => (prev === b.date_key ? null : b.date_key));
+                            }}
+                            title={
+                              yesList.length > 0
+                                ? lang === 'ja'
+                                  ? 'タップして参加者を表示'
+                                  : 'Tap to view players'
+                                : undefined
+                            }
+                          >
+                            {lang === 'ja' ? `参加 ${yesList.length}` : `Going: ${yesList.length}`}
+                          </button>
+                        </div>
+                        {isGoingOpen && yesList.length > 0 && (
+                          <div style={{ fontSize: '0.74rem', color: 'var(--ink-secondary)', marginTop: 5 }}>
+                            {yesList.map((a) => a.attendee_name).join(', ')}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-lime btn-sm"
+                        onClick={() => void handleLoadBookedSession(b)}
+                        disabled={busy}
+                      >
+                        <Plus size={13} /> {lang === 'ja' ? '読み込む' : 'Use'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -661,15 +767,16 @@ export function SessionsView({
                 <button
                   type="button"
                   id="btn-delete-session"
-                  className="btn btn-danger btn-sm"
+                  className="btn btn-danger btn-icon btn-sm"
                   onClick={() => {
                     setDeleteConfirmText('');
                     setDeleteTarget(activeSession);
                   }}
                   disabled={busy}
+                  aria-label={lang === 'ja' ? 'セッションを削除' : 'Delete session'}
                   title={lang === 'ja' ? 'セッションを削除' : 'Delete session'}
                 >
-                  <Trash2 size={14} /> {lang === 'ja' ? '削除' : 'Delete'}
+                  <Trash2 size={14} />
                 </button>
               </div>
             </div>
@@ -791,6 +898,16 @@ export function SessionsView({
                   >
                     {t.quickScore}
                   </button>
+                  {m.status !== 'completed' && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => openSubstituteModal(m)}
+                      title={lang === 'ja' ? 'プレイヤー交代' : 'Substitute player'}
+                    >
+                      <Shuffle size={13} /> {lang === 'ja' ? '交代' : 'Sub'}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -1018,6 +1135,7 @@ export function SessionsView({
                     setVenueChoice(nextId);
                     if (nextId === 'other') {
                       setLocation('');
+                      setManualCourtType('indoor');
                       setAutoSwitchEnds(false);
                     } else {
                       const found = VENUES.find((v) => v.id === nextId);
@@ -1044,16 +1162,39 @@ export function SessionsView({
                   </option>
                 </select>
                 {venueChoice === 'other' && (
-                  <input
-                    id="sess-loc"
-                    className="input"
-                    style={{ marginTop: 6 }}
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder={
-                      lang === 'ja' ? '会場名を入力...' : 'Enter custom venue name...'
-                    }
-                  />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+                    <input
+                      id="sess-loc"
+                      className="input"
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      placeholder={
+                        lang === 'ja' ? '会場名を入力...' : 'Enter custom venue name...'
+                      }
+                    />
+                    <div className="segmented" style={{ width: '100%' }}>
+                      {(['indoor', 'outdoor'] as const).map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          className={`segmented-btn ${manualCourtType === type ? 'active' : ''}`}
+                          style={{ flex: 1 }}
+                          onClick={() => {
+                            setManualCourtType(type);
+                            setAutoSwitchEnds(type === 'outdoor');
+                          }}
+                        >
+                          {type === 'indoor'
+                            ? lang === 'ja'
+                              ? '屋内 (Indoor)'
+                              : 'Indoor'
+                            : lang === 'ja'
+                              ? '屋外 (Outdoor)'
+                              : 'Outdoor'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
@@ -1061,7 +1202,7 @@ export function SessionsView({
             <div className="field-group">
               <span className="field-label">{lang === 'ja' ? '形式' : 'Format'}</span>
               <div className="grid-2">
-                {(Object.keys(FORMAT_META) as SessionFormat[]).map((key) => (
+                {SELECTABLE_FORMATS.map((key) => (
                   <button
                     key={key}
                     type="button"
@@ -1100,14 +1241,19 @@ export function SessionsView({
                 <select
                   id="sess-courts"
                   className="select"
-                  value={courtsCount}
+                  value={effectiveCourtsCount}
                   onChange={(e) => setCourtsCount(Number(e.target.value))}
                 >
-                  {[1, 2, 3, 4, 5, 6].map((n) => (
-                    <option key={n} value={n}>
-                      {lang === 'ja' ? `${n} コート` : `${n} ${n === 1 ? 'Court' : 'Courts'}`}
-                    </option>
-                  ))}
+                  {[1, 2, 3, 4, 5, 6].map((n) => {
+                    const tooMany = n > maxCourts;
+                    return (
+                      <option key={n} value={n} disabled={tooMany}>
+                        {lang === 'ja'
+                          ? `${n} コート${tooMany ? ` (要${n * playersPerCourt}名)` : ''}`
+                          : `${n} ${n === 1 ? 'Court' : 'Courts'}${tooMany ? ` (needs ${n * playersPerCourt})` : ''}`}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
               <div className="field-group">
@@ -1195,8 +1341,8 @@ export function SessionsView({
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span className="field-label">
                   {lang === 'ja'
-                    ? `参加チェックイン (${checkedInIds.length}名 / 最低4名)`
-                    : `Check-In Players (${checkedInIds.length} / min 4)`}
+                    ? `参加チェックイン (${checkedInIds.length}名 / 最低${minPlayers}名)`
+                    : `Check-In Players (${checkedInIds.length} / min ${minPlayers})`}
                 </span>
                 <button
                   type="button"
@@ -1278,7 +1424,7 @@ export function SessionsView({
                 id="btn-confirm-create-session"
                 className="btn btn-primary"
                 onClick={handleCreateSession}
-                disabled={busy || checkedInIds.length < 4}
+                disabled={busy || checkedInIds.length < minPlayers}
               >
                 {lang === 'ja' ? '作成＆第1ラウンド生成' : 'Create & Generate Round 1'}
               </button>
@@ -1295,7 +1441,7 @@ export function SessionsView({
             if (!busy) setDeleteTarget(null);
           }}
         >
-          <div className="modal-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
             <div className="modal-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--danger)' }}>
                 <Trash2 size={18} />
@@ -1340,10 +1486,10 @@ export function SessionsView({
                 {lang === 'ja'
                   ? `含まれる試合: ${sessionMatches.length}件（完了済み: ${
                       sessionMatches.filter((m) => m.status === 'completed').length
-                    }件）`
+                    }件）— 履歴からもすべて削除されます。`
                   : `Session contains ${sessionMatches.length} match(es) (${
                       sessionMatches.filter((m) => m.status === 'completed').length
-                    } completed).`}
+                    } completed) — all will also be deleted from history.`}
               </div>
               <div className="field-group">
                 <label className="field-label" htmlFor="delete-session-confirm">
@@ -1361,26 +1507,163 @@ export function SessionsView({
                   autoComplete="off"
                 />
               </div>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: 10,
+                  paddingTop: 8,
+                  borderTop: '1px solid var(--border-subtle)',
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={busy}
+                >
+                  {lang === 'ja' ? 'キャンセル' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  id="btn-confirm-delete-session"
+                  className="btn btn-danger"
+                  onClick={() => void handleConfirmDeleteSession()}
+                  disabled={busy || deleteConfirmText.trim().toUpperCase() !== 'DELETE'}
+                >
+                  <Trash2 size={15} />{' '}
+                  {lang === 'ja' ? '完全に削除する' : 'Delete Session'}
+                </button>
+              </div>
             </div>
-            <div className="modal-footer">
+          </div>
+        </div>
+      )}
+
+      {/* Substitute Player Modal */}
+      {subMatch && (
+        <div
+          className="modal-backdrop"
+          onClick={() => {
+            if (!busy) setSubMatch(null);
+          }}
+        >
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+            <div className="modal-header">
+              <h2>{lang === 'ja' ? 'プレイヤー交代' : 'Substitute Player'}</h2>
               <button
                 type="button"
-                className="btn btn-secondary"
-                onClick={() => setDeleteTarget(null)}
+                className="btn btn-ghost btn-icon"
+                onClick={() => setSubMatch(null)}
                 disabled={busy}
+                aria-label="Close"
               >
-                {lang === 'ja' ? 'キャンセル' : 'Cancel'}
+                <X size={18} />
               </button>
-              <button
-                type="button"
-                id="btn-confirm-delete-session"
-                className="btn btn-danger"
-                onClick={() => void handleConfirmDeleteSession()}
-                disabled={busy || deleteConfirmText.trim().toUpperCase() !== 'DELETE'}
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ fontSize: '0.84rem', color: 'var(--ink-secondary)' }}>
+                R{subMatch.round_number} · Court {subMatch.court_number ?? 1} —{' '}
+                <strong>{subMatch.team_a_name}</strong> vs <strong>{subMatch.team_b_name}</strong>
+              </div>
+
+              <div className="field-group">
+                <label className="field-label" htmlFor="sub-out-select">
+                  {lang === 'ja' ? '交代で抜けるプレイヤー' : 'Player Subbing Out'}
+                </label>
+                <select
+                  id="sub-out-select"
+                  className="select"
+                  value={subOutId}
+                  onChange={(e) => setSubOutId(e.target.value)}
+                >
+                  {subMatch.participants.map((p) => {
+                    const pl = playerMap.get(p.player_id);
+                    return (
+                      <option key={p.player_id} value={p.player_id}>
+                        {pl?.name ?? 'Player'} (Team {p.team})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div className="field-group">
+                <label className="field-label" htmlFor="sub-in-select">
+                  {lang === 'ja' ? '代わりに入るプレイヤー' : 'Substitute Player In'}
+                </label>
+                <select
+                  id="sub-in-select"
+                  className="select"
+                  value={subInId}
+                  onChange={(e) => setSubInId(e.target.value)}
+                >
+                  {(() => {
+                    const inMatch = new Set(subMatch.participants.map((p) => p.player_id));
+                    const sittingSet = new Set(sittingOutIds);
+                    const sessionSet = new Set(
+                      activeSession?.players.filter((sp) => sp.active).map((sp) => sp.player_id) ?? []
+                    );
+                    const candidates = players
+                      .filter((p) => sessionSet.has(p.id) && !inMatch.has(p.id))
+                      .sort((a, b) => {
+                        const aSit = sittingSet.has(a.id) ? 0 : 1;
+                        const bSit = sittingSet.has(b.id) ? 0 : 1;
+                        if (aSit !== bSit) return aSit - bSit;
+                        return a.name.localeCompare(b.name);
+                      });
+                    if (candidates.length === 0) {
+                      return (
+                        <option value="">
+                          {lang === 'ja'
+                            ? '交代可能なチェックイン済みプレイヤーがいません'
+                            : 'No checked-in players available'}
+                        </option>
+                      );
+                    }
+                    return candidates.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                        {sittingSet.has(p.id)
+                          ? lang === 'ja'
+                            ? ' (待機中)'
+                            : ' (Sitting out)'
+                          : lang === 'ja'
+                            ? ' (他コート)'
+                            : ' (On another court)'}
+                      </option>
+                    ));
+                  })()}
+                </select>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: 10,
+                  paddingTop: 8,
+                  borderTop: '1px solid var(--border-subtle)',
+                }}
               >
-                <Trash2 size={15} />{' '}
-                {lang === 'ja' ? '完全に削除する' : 'Delete Session'}
-              </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setSubMatch(null)}
+                  disabled={busy}
+                >
+                  {lang === 'ja' ? 'キャンセル' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  id="btn-confirm-substitute"
+                  className="btn btn-primary"
+                  onClick={() => void handleConfirmSubstitute()}
+                  disabled={busy || !subOutId || !subInId || subOutId === subInId}
+                >
+                  <Shuffle size={15} /> {lang === 'ja' ? '交代を確定' : 'Confirm Sub'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

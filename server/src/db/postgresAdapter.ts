@@ -136,9 +136,10 @@ export class PostgresAdapter implements DataRepository {
   }
 
   async listSessions(): Promise<Session[]> {
-    const [sRes, spRes] = await Promise.all([
+    const [sRes, spRes, allMatches] = await Promise.all([
       this.pool.query('select * from public.sessions order by started_at desc'),
       this.pool.query('select * from public.session_players order by check_in_order asc'),
+      this.listMatches(),
     ]);
     const bySession = new Map<string, SessionPlayer[]>();
     for (const sp of spRes.rows) {
@@ -146,9 +147,17 @@ export class PostgresAdapter implements DataRepository {
       list.push(sp);
       bySession.set(sp.session_id, list);
     }
+    const matchesBySession = new Map<string, Match[]>();
+    for (const m of allMatches) {
+      if (!m.session_id) continue;
+      const list = matchesBySession.get(m.session_id) ?? [];
+      list.push(m);
+      matchesBySession.set(m.session_id, list);
+    }
     return sRes.rows.map((s) => ({
       ...s,
       players: bySession.get(s.id) ?? [],
+      matches: matchesBySession.get(s.id) ?? [],
     }));
   }
 
@@ -255,6 +264,7 @@ export class PostgresAdapter implements DataRepository {
   }
 
   async deleteSession(id: string): Promise<boolean> {
+    await this.pool.query('delete from public.matches where session_id = $1', [id]);
     const res = await this.pool.query('delete from public.sessions where id = $1', [id]);
     return (res.rowCount ?? 0) > 0;
   }
@@ -415,6 +425,17 @@ export class PostgresAdapter implements DataRepository {
               : null,
         ]
       );
+
+      if (patch.participants) {
+        await client.query('delete from public.match_participants where match_id = $1', [id]);
+        for (const p of patch.participants) {
+          await client.query(
+            `insert into public.match_participants (match_id, player_id, team, starting_side)
+             values ($1, $2, $3, $4)`,
+            [id, p.player_id, p.team, p.starting_side]
+          );
+        }
+      }
 
       if (patch.rallies) {
         await client.query('delete from public.rally_events where match_id = $1', [id]);

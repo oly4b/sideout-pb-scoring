@@ -2396,7 +2396,7 @@ button {
   min-height: 0;
   overflow: hidden;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: clamp(14px, 2.2vw, 26px);
 }
 
@@ -2405,13 +2405,13 @@ button {
   min-height: 0;
   overflow: hidden;
   background: rgba(15, 23, 42, 0.72);
-  border: 2px solid rgba(255, 255, 255, 0.12);
+  border: 3px solid rgba(255, 255, 255, 0.12);
   border-radius: 24px;
   padding: clamp(18px, 2.6vh, 32px) clamp(16px, 2.4vw, 32px);
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  justify-items: center;
   align-items: center;
-  justify-content: space-between;
   gap: clamp(8px, 1.4vh, 16px);
   cursor: pointer;
   transition: transform 0.12s ease, border-color 0.2s ease, box-shadow 0.2s ease;
@@ -2439,6 +2439,7 @@ button {
 }
 
 .fs-board-team-name {
+  align-self: start;
   font-family: var(--font-display);
   font-size: clamp(2.2rem, min(4.8vw, 6.8dvh), 4.6rem);
   font-weight: 900;
@@ -2460,31 +2461,38 @@ button {
   text-shadow: 0 10px 32px rgba(2, 6, 23, 0.55);
 }
 
+.fs-board-tile.has-gp .fs-board-team-name {
+  max-width: calc(100% - 240px);
+  font-size: clamp(1.7rem, min(3.4vw, 5.4dvh), 3.6rem);
+}
+
 .fs-board-gp-badge {
   position: absolute;
-  top: 16px;
-  padding: 6px 14px;
+  top: 14px;
+  padding: 4px 12px;
   border-radius: 999px;
-  background: rgba(190, 242, 100, 0.2);
+  background: rgba(20, 34, 24, 0.88);
   border: 1.5px solid #bef264;
   color: #bef264;
-  font-size: clamp(0.85rem, 1.4vw, 1.15rem);
+  font-size: clamp(0.75rem, 1.15vw, 0.98rem);
   font-weight: 900;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   box-shadow: 0 4px 16px rgba(2, 6, 23, 0.45);
   pointer-events: none;
+  z-index: 2;
 }
 
 .fs-board-gp-badge.is-left {
-  left: 16px;
+  left: 14px;
 }
 
 .fs-board-gp-badge.is-right {
-  right: 16px;
+  right: 14px;
 }
 
 .fs-board-status-pill {
+  align-self: end;
   padding: 8px 20px;
   border-radius: 999px;
   font-size: clamp(1.35rem, 2.4vw, 1.88rem);
@@ -2498,6 +2506,12 @@ button {
   background: rgba(190, 242, 100, 0.2);
   border: 1.5px solid rgba(190, 242, 100, 0.6);
   color: #bef264;
+}
+
+.fs-board-status-pill.is-hint {
+  font-size: clamp(0.68rem, 1.2vw, 0.94rem);
+  padding: 5px 12px;
+  white-space: nowrap;
 }
 
 .fs-board-eval-wrap {
@@ -2573,9 +2587,19 @@ button {
     font-size: clamp(2.2rem, min(7.5vw, 5.2vh), 3.4rem);
   }
 
+  .fs-board-tile.has-gp .fs-board-team-name {
+    max-width: calc(100% - 170px);
+    font-size: clamp(1.5rem, min(5.5vw, 4.2vh), 2.5rem);
+  }
+
   .fs-board-status-pill {
     font-size: clamp(0.72rem, min(3.2vw, 2vh), 1rem);
     padding: 5px 12px;
+  }
+
+  .fs-board-status-pill.is-hint {
+    font-size: clamp(0.55rem, min(2.2vw, 1.3vh), 0.72rem);
+    padding: 4px 10px;
   }
 
   .fs-board-score {
@@ -2692,34 +2716,61 @@ button {
 
 /* Fullscreen Board Inline Tagging */
 .fs-board-tag-stack {
-  flex: 1;
+  height: 100%;
   min-height: 0;
   width: 100%;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: clamp(10px, 1.6vh, 18px);
+  gap: clamp(6px, 1.4dvh, 16px);
 }
 
 .fs-board-tag-btn {
   width: min(82%, 460px);
-  flex: 0 1 25%;
-  min-height: 54px;
-  padding: clamp(10px, 1.4vh, 18px) 24px;
-  border-radius: 18px;
+  flex: 0 1 26%;
+  min-height: 0;
+  padding: clamp(6px, 1.2dvh, 18px) 20px;
+  border-radius: 16px;
   border: 2px solid rgba(255, 255, 255, 0.18);
   background: rgba(30, 41, 59, 0.85);
   color: #f8fafc;
   font-family: var(--font-display);
-  font-size: clamp(2rem, min(4.6vw, 7.5dvh), 4.2rem);
+  font-size: clamp(1rem, min(3.4vw, 6dvh), 3.4rem);
   line-height: 1;
   font-weight: 900;
+  white-space: nowrap;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.fs-board-tag-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-height: 540px) {
+  .fs-board-tag-stack {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-content: center;
+  }
+
+  .fs-board-tag-btn {
+    width: auto;
+    flex: 1 1 0;
+    min-width: 110px;
+    max-width: 240px;
+    height: clamp(44px, 16dvh, 84px);
+    font-size: clamp(1rem, min(2.6vw, 5.5dvh), 2rem);
+  }
 }
 
 .fs-board-tag-btn.is-winner-tag {
@@ -2739,14 +2790,12 @@ button {
 }
 
 .fs-board-tag-skip {
-  align-self: center;
-  margin-top: 2px;
-  padding: 6px 16px;
+  padding: 6px 14px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: transparent;
-  color: var(--ink-muted);
-  font-size: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(15, 23, 42, 0.7);
+  color: var(--ink-secondary);
+  font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer;
 }
@@ -2829,9 +2878,45 @@ button {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px) and (orientation: landscape) {
   .fs-board-postgame {
     grid-template-columns: 1fr;
     overflow-y: auto;
+  }
+}
+
+@media (orientation: portrait) {
+  .fs-board-postgame {
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 10px;
+    overflow: hidden;
+  }
+
+  .fs-board-postgame-left {
+    gap: 8px;
+  }
+
+  .fs-board-postgame-chart-card,
+  .fs-board-postgame-stats-card {
+    padding: 8px 10px;
+  }
+
+  .fs-board-postgame-chart-card .chart-container svg {
+    max-height: 24vw;
+  }
+
+  .fs-board-postgame-right {
+    padding: 10px 12px;
+    gap: 6px;
+    overflow: hidden;
+  }
+
+  .fs-board-postgame-hero {
+    padding: 7px 10px;
+  }
+
+  .fs-board-postgame-actions {
+    padding-top: 6px;
+    gap: 6px;
   }
 }

@@ -392,9 +392,7 @@ export class LocalJsonAdapter implements DataRepository {
   async deleteSession(id: string): Promise<boolean> {
     const before = this.data.sessions.length;
     this.data.sessions = this.data.sessions.filter((s) => s.id !== id);
-    this.data.matches = this.data.matches.map((m) =>
-      m.session_id === id ? { ...m, session_id: null } : m
-    );
+    this.data.matches = this.data.matches.filter((m) => m.session_id !== id);
     this.save();
     return this.data.sessions.length < before;
   }

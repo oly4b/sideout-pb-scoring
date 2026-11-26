@@ -397,14 +397,17 @@ function pairKey(a, b) {
 function generateNextRound(params) {
   const activePlayers = params.sessionPlayers.filter((p) => p.active);
   const playerIds = activePlayers.map((p) => p.player_id);
-  if (playerIds.length < 4) {
+  const isSingles = params.format === "singles";
+  const minPlayers = isSingles ? 2 : 4;
+  if (playerIds.length < minPlayers) {
     return {
       round_number: params.nextRoundNumber,
       matches: [],
       sitting_out: playerIds
     };
   }
-  const maxCourtsByPlayers = Math.floor(playerIds.length / 4);
+  const playersPerCourt = isSingles ? 2 : 4;
+  const maxCourtsByPlayers = Math.floor(playerIds.length / playersPerCourt);
   const numCourts = Math.max(1, Math.min(params.courtsCount, maxCourtsByPlayers));
   const gamesPlayed = /* @__PURE__ */ new Map();
   const lastRoundPlayed = /* @__PURE__ */ new Map();
@@ -468,9 +471,9 @@ function generateNextRound(params) {
     const idxB = (playerIds.indexOf(b) + params.nextRoundNumber * 3) % playerIds.length;
     return idxA - idxB;
   });
-  const playing = sortedForPlay.slice(0, numCourts * 4);
-  const sittingOut = sortedForPlay.slice(numCourts * 4);
-  const matches = optimizeDoublesMatchups(
+  const playing = sortedForPlay.slice(0, numCourts * playersPerCourt);
+  const sittingOut = sortedForPlay.slice(numCourts * playersPerCourt);
+  const matches = isSingles ? optimizeSinglesMatchups(playing, numCourts, opponentCounts, params.nextRoundNumber) : optimizeDoublesMatchups(
     playing,
     numCourts,
     partnerCounts,
@@ -647,6 +650,50 @@ function optimizeDoublesMatchups(playing, numCourts, partnerCounts, opponentCoun
       court_number: c + 1,
       teamA: [bestLayout[c * 4], bestLayout[c * 4 + 1]],
       teamB: [bestLayout[c * 4 + 2], bestLayout[c * 4 + 3]]
+    });
+  }
+  return matches;
+}
+function optimizeSinglesMatchups(playing, numCourts, opponentCounts, roundSeed) {
+  const trials = Math.min(200, Math.max(30, playing.length * 12));
+  let bestLayout = [...playing];
+  let bestCost = Infinity;
+  let seed = roundSeed * 2654435761 + playing.length * 131;
+  const nextRand = () => {
+    seed = seed * 1664525 + 1013904223 >>> 0;
+    return seed / 4294967295;
+  };
+  const evaluate = (arr) => {
+    let cost = 0;
+    for (let c = 0; c < numCourts; c++) {
+      const a = arr[c * 2];
+      const b = arr[c * 2 + 1];
+      const opp = opponentCounts.get(pairKey(a, b)) ?? 0;
+      cost += opp * opp * 10 + opp * 5;
+    }
+    return cost;
+  };
+  for (let t = 0; t < trials; t++) {
+    const candidate = [...playing];
+    if (t > 0) {
+      for (let i = candidate.length - 1; i > 0; i--) {
+        const j = Math.floor(nextRand() * (i + 1));
+        [candidate[i], candidate[j]] = [candidate[j], candidate[i]];
+      }
+    }
+    const cost = evaluate(candidate);
+    if (cost < bestCost) {
+      bestCost = cost;
+      bestLayout = candidate;
+      if (bestCost === 0) break;
+    }
+  }
+  const matches = [];
+  for (let c = 0; c < numCourts; c++) {
+    matches.push({
+      court_number: c + 1,
+      teamA: [bestLayout[c * 2]],
+      teamB: [bestLayout[c * 2 + 1]]
     });
   }
   return matches;
@@ -1167,9 +1214,7 @@ var LocalJsonAdapter = class {
   async deleteSession(id) {
     const before = this.data.sessions.length;
     this.data.sessions = this.data.sessions.filter((s) => s.id !== id);
-    this.data.matches = this.data.matches.map(
-      (m) => m.session_id === id ? { ...m, session_id: null } : m
-    );
+    this.data.matches = this.data.matches.filter((m) => m.session_id !== id);
     this.save();
     return this.data.sessions.length < before;
   }
@@ -1344,9 +1389,10 @@ var PostgresAdapter = class {
     return (res.rowCount ?? 0) > 0;
   }
   async listSessions() {
-    const [sRes, spRes] = await Promise.all([
+    const [sRes, spRes, allMatches] = await Promise.all([
       this.pool.query("select * from public.sessions order by started_at desc"),
-      this.pool.query("select * from public.session_players order by check_in_order asc")
+      this.pool.query("select * from public.session_players order by check_in_order asc"),
+      this.listMatches()
     ]);
     const bySession = /* @__PURE__ */ new Map();
     for (const sp of spRes.rows) {
@@ -1354,9 +1400,17 @@ var PostgresAdapter = class {
       list.push(sp);
       bySession.set(sp.session_id, list);
     }
+    const matchesBySession = /* @__PURE__ */ new Map();
+    for (const m of allMatches) {
+      if (!m.session_id) continue;
+      const list = matchesBySession.get(m.session_id) ?? [];
+      list.push(m);
+      matchesBySession.set(m.session_id, list);
+    }
     return sRes.rows.map((s) => ({
       ...s,
-      players: bySession.get(s.id) ?? []
+      players: bySession.get(s.id) ?? [],
+      matches: matchesBySession.get(s.id) ?? []
     }));
   }
   async getSession(id) {
@@ -1457,6 +1511,7 @@ var PostgresAdapter = class {
     return this.getSession(id);
   }
   async deleteSession(id) {
+    await this.pool.query("delete from public.matches where session_id = $1", [id]);
     const res = await this.pool.query("delete from public.sessions where id = $1", [id]);
     return (res.rowCount ?? 0) > 0;
   }
@@ -1600,6 +1655,16 @@ var PostgresAdapter = class {
           patch.live_state !== void 0 ? patch.live_state ? JSON.stringify(patch.live_state) : null : existing.live_state ? JSON.stringify(existing.live_state) : null
         ]
       );
+      if (patch.participants) {
+        await client.query("delete from public.match_participants where match_id = $1", [id]);
+        for (const p of patch.participants) {
+          await client.query(
+            `insert into public.match_participants (match_id, player_id, team, starting_side)
+             values ($1, $2, $3, $4)`,
+            [id, p.player_id, p.team, p.starting_side]
+          );
+        }
+      }
       if (patch.rallies) {
         await client.query("delete from public.rally_events where match_id = $1", [id]);
         for (const r of patch.rallies) {
@@ -1750,7 +1815,10 @@ var SupabaseAdapter = class {
     const { data: sessions, error } = await this.client.from("sessions").select("*").order("started_at", { ascending: false });
     if (error) throw new Error(error.message);
     if (!sessions || sessions.length === 0) return [];
-    const { data: spRows, error: spErr } = await this.client.from("session_players").select("*");
+    const [{ data: spRows, error: spErr }, allMatches] = await Promise.all([
+      this.client.from("session_players").select("*"),
+      this.listMatches()
+    ]);
     if (spErr) throw new Error(spErr.message);
     const bySession = /* @__PURE__ */ new Map();
     for (const row of spRows ?? []) {
@@ -1758,9 +1826,17 @@ var SupabaseAdapter = class {
       list.push(row);
       bySession.set(row.session_id, list);
     }
+    const matchesBySession = /* @__PURE__ */ new Map();
+    for (const m of allMatches) {
+      if (!m.session_id) continue;
+      const list = matchesBySession.get(m.session_id) ?? [];
+      list.push(m);
+      matchesBySession.set(m.session_id, list);
+    }
     return sessions.map((s) => ({
       ...s,
-      players: (bySession.get(s.id) ?? []).sort((a, b) => a.check_in_order - b.check_in_order)
+      players: (bySession.get(s.id) ?? []).sort((a, b) => a.check_in_order - b.check_in_order),
+      matches: matchesBySession.get(s.id) ?? []
     }));
   }
   async getSession(id) {
@@ -1830,6 +1906,8 @@ var SupabaseAdapter = class {
     return this.getSession(id);
   }
   async deleteSession(id) {
+    const { error: matchErr } = await this.client.from("matches").delete().eq("session_id", id);
+    if (matchErr) throw new Error(matchErr.message);
     const { error } = await this.client.from("sessions").delete().eq("id", id);
     if (error) throw new Error(error.message);
     return true;
@@ -1935,10 +2013,25 @@ var SupabaseAdapter = class {
     }
   }
   async performUpdateMatch(id, patch) {
-    const { rallies, ...matchFields } = patch;
+    const { rallies, participants, ...matchFields } = patch;
     if (Object.keys(matchFields).length > 0) {
       const { error } = await this.client.from("matches").update(matchFields).eq("id", id);
       if (error) throw new Error(error.message);
+    }
+    if (participants) {
+      const { error: delPartErr } = await this.client.from("match_participants").delete().eq("match_id", id);
+      if (delPartErr) throw new Error(delPartErr.message);
+      if (participants.length > 0) {
+        const { error: insPartErr } = await this.client.from("match_participants").insert(
+          participants.map((p) => ({
+            match_id: id,
+            player_id: p.player_id,
+            team: p.team,
+            starting_side: p.starting_side
+          }))
+        );
+        if (insPartErr) throw new Error(insPartErr.message);
+      }
     }
     if (rallies) {
       if (rallies.length === 0) {
@@ -2297,12 +2390,14 @@ async function createMatchesForProposal(params) {
   const { session, roundNumber, proposalMatches, playerMap } = params;
   const createdMatches = [];
   for (const pm of proposalMatches) {
+    const isSingles = session.format === "singles" || pm.teamA.length === 1 || pm.teamB.length === 1;
+    const gameType = isSingles ? "singles" : "doubles";
     const a1 = playerMap.get(pm.teamA[0]);
-    const a2 = playerMap.get(pm.teamA[1]);
+    const a2 = pm.teamA[1] ? playerMap.get(pm.teamA[1]) : void 0;
     const b1 = playerMap.get(pm.teamB[0]);
-    const b2 = playerMap.get(pm.teamB[1]);
+    const b2 = pm.teamB[1] ? playerMap.get(pm.teamB[1]) : void 0;
     const liveState = createInitialLiveState({
-      gameType: "doubles",
+      gameType,
       scoringMode: session.scoring_mode,
       targetScore: session.target_score,
       winByTwo: session.win_by_two,
@@ -2310,23 +2405,27 @@ async function createMatchesForProposal(params) {
       teamAPlayers: pm.teamA,
       teamBPlayers: pm.teamB
     });
+    const participants = isSingles ? [
+      { player_id: pm.teamA[0], team: "A", starting_side: "right" },
+      { player_id: pm.teamB[0], team: "B", starting_side: "right" }
+    ] : [
+      { player_id: pm.teamA[0], team: "A", starting_side: "right" },
+      { player_id: pm.teamA[1], team: "A", starting_side: "left" },
+      { player_id: pm.teamB[0], team: "B", starting_side: "right" },
+      { player_id: pm.teamB[1], team: "B", starting_side: "left" }
+    ];
     const match = await repo.createMatch({
       session_id: session.id,
       round_number: roundNumber,
       court_number: pm.court_number,
-      game_type: "doubles",
+      game_type: gameType,
       scoring_mode: session.scoring_mode,
       target_score: session.target_score,
       win_by_two: session.win_by_two,
       status: "scheduled",
-      team_a_name: `${firstName(a1, "P1")} & ${firstName(a2, "P2")}`,
-      team_b_name: `${firstName(b1, "P3")} & ${firstName(b2, "P4")}`,
-      participants: [
-        { player_id: pm.teamA[0], team: "A", starting_side: "right" },
-        { player_id: pm.teamA[1], team: "A", starting_side: "left" },
-        { player_id: pm.teamB[0], team: "B", starting_side: "right" },
-        { player_id: pm.teamB[1], team: "B", starting_side: "left" }
-      ],
+      team_a_name: isSingles ? firstName(a1, "Player 1") : `${firstName(a1, "P1")} & ${firstName(a2, "P2")}`,
+      team_b_name: isSingles ? firstName(b1, "Player 2") : `${firstName(b1, "P3")} & ${firstName(b2, "P4")}`,
+      participants,
       live_state: liveState
     });
     createdMatches.push(match);
@@ -2336,13 +2435,15 @@ async function createMatchesForProposal(params) {
 app.post("/api/sessions", async (req, res) => {
   try {
     const body = req.body ?? {};
-    if (!body.title || !Array.isArray(body.player_ids) || body.player_ids.length < 4) {
-      res.status(400).json({ error: "Session title and at least 4 players are required" });
+    const format = body.format ?? "rotating_partners";
+    const minPlayers = format === "singles" ? 3 : 4;
+    if (!body.title || !Array.isArray(body.player_ids) || body.player_ids.length < minPlayers) {
+      res.status(400).json({ error: `Session title and at least ${minPlayers} players are required` });
       return;
     }
     const session = await repo.createSession({
       title: body.title,
-      format: body.format ?? "rotating_partners",
+      format,
       courts_count: Number(body.courts_count ?? 2),
       scoring_mode: body.scoring_mode ?? "side_out",
       target_score: Number(body.target_score ?? 11),
@@ -2433,6 +2534,9 @@ app.post("/api/sessions/:id/end", async (req, res) => {
 app.delete("/api/sessions/:id", async (req, res) => {
   try {
     const ok = await repo.deleteSession(req.params.id);
+    if (ok) {
+      await syncPlayerRatings().catch(() => void 0);
+    }
     res.json({ deleted: ok });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to delete session" });
@@ -2531,6 +2635,72 @@ app.patch("/api/matches/:id", async (req, res) => {
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to update match" });
+  }
+});
+app.post("/api/matches/:id/substitute", async (req, res) => {
+  try {
+    const { out_player_id, in_player_id } = req.body ?? {};
+    if (!out_player_id || !in_player_id || out_player_id === in_player_id) {
+      res.status(400).json({ error: "Select two different players to substitute" });
+      return;
+    }
+    const existing = await repo.getMatch(req.params.id);
+    if (!existing) {
+      res.status(404).json({ error: "Match not found" });
+      return;
+    }
+    if (!existing.participants.some((p) => p.player_id === out_player_id)) {
+      res.status(400).json({ error: "Outgoing player is not in this match" });
+      return;
+    }
+    if (existing.participants.some((p) => p.player_id === in_player_id)) {
+      res.status(400).json({ error: "Incoming player is already in this match" });
+      return;
+    }
+    if (existing.session_id) {
+      const session = await repo.getSession(existing.session_id);
+      if (session && !session.players.some((sp) => sp.active && sp.player_id === in_player_id)) {
+        res.status(400).json({ error: "Incoming player must be checked in to this session" });
+        return;
+      }
+    }
+    const players = await repo.listPlayers();
+    const playerMap = new Map(players.map((p) => [p.id, p]));
+    if (!playerMap.has(in_player_id)) {
+      res.status(404).json({ error: "Incoming player not found" });
+      return;
+    }
+    const updatedParticipants = existing.participants.map(
+      (p) => p.player_id === out_player_id ? { ...p, player_id: in_player_id } : p
+    );
+    const teamA = updatedParticipants.filter((p) => p.team === "A");
+    const teamB = updatedParticipants.filter((p) => p.team === "B");
+    const isSingles = existing.game_type === "singles";
+    const teamAName = isSingles ? firstName(playerMap.get(teamA[0]?.player_id), "Player 1") : `${firstName(playerMap.get(teamA[0]?.player_id), "P1")} & ${firstName(playerMap.get(teamA[1]?.player_id), "P2")}`;
+    const teamBName = isSingles ? firstName(playerMap.get(teamB[0]?.player_id), "Player 2") : `${firstName(playerMap.get(teamB[0]?.player_id), "P3")} & ${firstName(playerMap.get(teamB[1]?.player_id), "P4")}`;
+    const updatedLiveState = existing.live_state ? {
+      ...existing.live_state,
+      version: (existing.live_state.version ?? existing.rallies.length) + 1,
+      positions: {
+        teamA: {
+          right: existing.live_state.positions.teamA.right === out_player_id ? in_player_id : existing.live_state.positions.teamA.right,
+          left: existing.live_state.positions.teamA.left === out_player_id ? in_player_id : existing.live_state.positions.teamA.left
+        },
+        teamB: {
+          right: existing.live_state.positions.teamB.right === out_player_id ? in_player_id : existing.live_state.positions.teamB.right,
+          left: existing.live_state.positions.teamB.left === out_player_id ? in_player_id : existing.live_state.positions.teamB.left
+        }
+      }
+    } : existing.live_state;
+    const updated = await repo.updateMatch(existing.id, {
+      participants: updatedParticipants,
+      team_a_name: teamAName,
+      team_b_name: teamBName,
+      live_state: updatedLiveState
+    });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to substitute player" });
   }
 });
 app.post("/api/matches/:id/quick-score", async (req, res) => {

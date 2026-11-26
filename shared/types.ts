@@ -8,7 +8,8 @@ export type SessionFormat =
   | 'open_play'
   | 'rotating_partners'
   | 'set_partners'
-  | 'king_of_court';
+  | 'king_of_court'
+  | 'singles';
 export type SessionStatus = 'active' | 'completed';
 export type RallyEventType = 'point' | 'server_change' | 'side_out';
 

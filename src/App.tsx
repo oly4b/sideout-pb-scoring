@@ -402,6 +402,7 @@ export default function App() {
                 onSelectMatch={(m) => setActiveMatchId(m?.id ?? null)}
                 onMatchUpdated={handleMatchUpdated}
                 onBackToSession={handleBackToSession}
+                onOpenHistory={() => setTab('history')}
                 onNotify={notify}
               />
             )}

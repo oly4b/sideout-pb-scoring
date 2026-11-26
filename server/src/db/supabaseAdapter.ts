@@ -154,7 +154,10 @@ export class SupabaseAdapter implements DataRepository {
     if (error) throw new Error(error.message);
     if (!sessions || sessions.length === 0) return [];
 
-    const { data: spRows, error: spErr } = await this.client.from('session_players').select('*');
+    const [{ data: spRows, error: spErr }, allMatches] = await Promise.all([
+      this.client.from('session_players').select('*'),
+      this.listMatches(),
+    ]);
     if (spErr) throw new Error(spErr.message);
 
     const bySession = new Map<string, SessionPlayer[]>();
@@ -164,9 +167,18 @@ export class SupabaseAdapter implements DataRepository {
       bySession.set(row.session_id, list);
     }
 
+    const matchesBySession = new Map<string, Match[]>();
+    for (const m of allMatches) {
+      if (!m.session_id) continue;
+      const list = matchesBySession.get(m.session_id) ?? [];
+      list.push(m);
+      matchesBySession.set(m.session_id, list);
+    }
+
     return sessions.map((s) => ({
       ...s,
       players: (bySession.get(s.id) ?? []).sort((a, b) => a.check_in_order - b.check_in_order),
+      matches: matchesBySession.get(s.id) ?? [],
     }));
   }
 
@@ -260,6 +272,8 @@ export class SupabaseAdapter implements DataRepository {
   }
 
   async deleteSession(id: string): Promise<boolean> {
+    const { error: matchErr } = await this.client.from('matches').delete().eq('session_id', id);
+    if (matchErr) throw new Error(matchErr.message);
     const { error } = await this.client.from('sessions').delete().eq('id', id);
     if (error) throw new Error(error.message);
     return true;
@@ -394,10 +408,30 @@ export class SupabaseAdapter implements DataRepository {
   }
 
   private async performUpdateMatch(id: string, patch: UpdateMatchPatch): Promise<Match | null> {
-    const { rallies, ...matchFields } = patch;
+    const { rallies, participants, ...matchFields } = patch;
     if (Object.keys(matchFields).length > 0) {
       const { error } = await this.client.from('matches').update(matchFields).eq('id', id);
       if (error) throw new Error(error.message);
+    }
+
+    if (participants) {
+      const { error: delPartErr } = await this.client
+        .from('match_participants')
+        .delete()
+        .eq('match_id', id);
+      if (delPartErr) throw new Error(delPartErr.message);
+
+      if (participants.length > 0) {
+        const { error: insPartErr } = await this.client.from('match_participants').insert(
+          participants.map((p) => ({
+            match_id: id,
+            player_id: p.player_id,
+            team: p.team,
+            starting_side: p.starting_side,
+          }))
+        );
+        if (insPartErr) throw new Error(insPartErr.message);
+      }
     }
 
     if (rallies) {

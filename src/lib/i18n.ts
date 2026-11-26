@@ -74,7 +74,7 @@ export const copy = {
     },
     sessions: {
       title: 'セッション & ローテーション管理',
-      subtitle: 'パートナー回転・キングオブザコート・固定ペア・オープンプレイの自動組合せと順位表。',
+      subtitle: 'パートナー回転・キングオブコート・固定ペア・1v1シングルスの自動組合せと順位表。',
       newSession: '新規セッション',
       nextRound: 'ラウンド生成',
       endSession: 'セッション終了',
@@ -189,7 +189,7 @@ export const copy = {
     },
     sessions: {
       title: 'Sessions & Rotations',
-      subtitle: 'Run Rotating Partners, King of the Court, Set Partners, or Open Play with live standings.',
+      subtitle: 'Run Rotating Partners, King of the Court, Set Partners, or 1v1 Singles with live standings.',
       newSession: 'New Session',
       nextRound: 'Generate Round',
       endSession: 'End Session',

@@ -2,8 +2,8 @@ import type { Match, SessionFormat, SessionPlayer } from './types';
 
 export interface ProposedCourtMatch {
   court_number: number;
-  teamA: [string, string];
-  teamB: [string, string];
+  teamA: string[];
+  teamB: string[];
 }
 
 export interface RoundProposal {
@@ -18,10 +18,10 @@ function pairKey(a: string, b: string): string {
 
 /**
  * Computes balanced matchups for the next round of a session across the configured courts.
- * - `rotating_partners`: minimizes repeat partners, repeat opponents, and unequal sit-outs
- * - `set_partners`: keeps team_slot pairs intact and rotates opposing pairs
- * - `king_of_court`: winners move up a court, losers move down, partners split on each court
- * - `open_play`: prioritizes players who sat out or have the fewest games played
+ * - `rotating_partners` / `open_play`: minimizes repeat partners, repeat opponents, and unequal sit-outs (min 4)
+ * - `set_partners`: keeps team_slot pairs intact and rotates opposing pairs (min 4)
+ * - `king_of_court`: winners move up a court, losers move down, partners split on each court (min 4)
+ * - `singles`: 1v1 matchups minimizing repeat opponents and unequal sit-outs (min 3)
  */
 export function generateNextRound(params: {
   format: SessionFormat;
@@ -32,8 +32,10 @@ export function generateNextRound(params: {
 }): RoundProposal {
   const activePlayers = params.sessionPlayers.filter((p) => p.active);
   const playerIds = activePlayers.map((p) => p.player_id);
+  const isSingles = params.format === 'singles';
+  const minPlayers = isSingles ? 2 : 4;
 
-  if (playerIds.length < 4) {
+  if (playerIds.length < minPlayers) {
     return {
       round_number: params.nextRoundNumber,
       matches: [],
@@ -41,7 +43,8 @@ export function generateNextRound(params: {
     };
   }
 
-  const maxCourtsByPlayers = Math.floor(playerIds.length / 4);
+  const playersPerCourt = isSingles ? 2 : 4;
+  const maxCourtsByPlayers = Math.floor(playerIds.length / playersPerCourt);
   const numCourts = Math.max(1, Math.min(params.courtsCount, maxCourtsByPlayers));
 
   // Track historical counts
@@ -109,8 +112,8 @@ export function generateNextRound(params: {
     );
   }
 
-  // Rotating Partners / Open Play logic
-  // 1. Select the (numCourts * 4) players who have played fewest games / sat out most recently
+  // Rotating Partners / Open Play / Singles logic
+  // 1. Select the (numCourts * playersPerCourt) players who have played fewest games / sat out most recently
   const sortedForPlay = [...playerIds].sort((a, b) => {
     const gDiff = (gamesPlayed.get(a) ?? 0) - (gamesPlayed.get(b) ?? 0);
     if (gDiff !== 0) return gDiff;
@@ -122,17 +125,19 @@ export function generateNextRound(params: {
     return idxA - idxB;
   });
 
-  const playing = sortedForPlay.slice(0, numCourts * 4);
-  const sittingOut = sortedForPlay.slice(numCourts * 4);
+  const playing = sortedForPlay.slice(0, numCourts * playersPerCourt);
+  const sittingOut = sortedForPlay.slice(numCourts * playersPerCourt);
 
-  // 2. Greedy + local-search grouping to minimize repeat partners (high weight) & repeat opponents
-  const matches = optimizeDoublesMatchups(
-    playing,
-    numCourts,
-    partnerCounts,
-    opponentCounts,
-    params.nextRoundNumber
-  );
+  // 2. Greedy + local-search grouping to minimize repeat partners (doubles) & repeat opponents
+  const matches = isSingles
+    ? optimizeSinglesMatchups(playing, numCourts, opponentCounts, params.nextRoundNumber)
+    : optimizeDoublesMatchups(
+        playing,
+        numCourts,
+        partnerCounts,
+        opponentCounts,
+        params.nextRoundNumber
+      );
 
   return {
     round_number: params.nextRoundNumber,
@@ -367,6 +372,60 @@ function optimizeDoublesMatchups(
       court_number: c + 1,
       teamA: [bestLayout[c * 4], bestLayout[c * 4 + 1]],
       teamB: [bestLayout[c * 4 + 2], bestLayout[c * 4 + 3]],
+    });
+  }
+  return matches;
+}
+
+function optimizeSinglesMatchups(
+  playing: string[],
+  numCourts: number,
+  opponentCounts: Map<string, number>,
+  roundSeed: number
+): ProposedCourtMatch[] {
+  const trials = Math.min(200, Math.max(30, playing.length * 12));
+  let bestLayout: string[] = [...playing];
+  let bestCost = Infinity;
+
+  let seed = roundSeed * 2654435761 + playing.length * 131;
+  const nextRand = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 0xffffffff;
+  };
+
+  const evaluate = (arr: string[]): number => {
+    let cost = 0;
+    for (let c = 0; c < numCourts; c++) {
+      const a = arr[c * 2];
+      const b = arr[c * 2 + 1];
+      const opp = opponentCounts.get(pairKey(a, b)) ?? 0;
+      cost += opp * opp * 10 + opp * 5;
+    }
+    return cost;
+  };
+
+  for (let t = 0; t < trials; t++) {
+    const candidate = [...playing];
+    if (t > 0) {
+      for (let i = candidate.length - 1; i > 0; i--) {
+        const j = Math.floor(nextRand() * (i + 1));
+        [candidate[i], candidate[j]] = [candidate[j], candidate[i]];
+      }
+    }
+    const cost = evaluate(candidate);
+    if (cost < bestCost) {
+      bestCost = cost;
+      bestLayout = candidate;
+      if (bestCost === 0) break;
+    }
+  }
+
+  const matches: ProposedCourtMatch[] = [];
+  for (let c = 0; c < numCourts; c++) {
+    matches.push({
+      court_number: c + 1,
+      teamA: [bestLayout[c * 2]],
+      teamB: [bestLayout[c * 2 + 1]],
     });
   }
   return matches;

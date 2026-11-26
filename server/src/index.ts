@@ -206,7 +206,7 @@ app.get('/api/sessions/:id', async (req, res) => {
   }
 });
 
-/** Persists scheduled doubles matches and initial `LiveGameState` records for a generated session round. */
+/** Persists scheduled doubles or singles matches and initial `LiveGameState` records for a generated session round. */
 async function createMatchesForProposal(params: {
   session: Awaited<ReturnType<typeof repo.createSession>>;
   roundNumber: number;
@@ -217,13 +217,16 @@ async function createMatchesForProposal(params: {
   const createdMatches: Match[] = [];
 
   for (const pm of proposalMatches) {
+    const isSingles =
+      session.format === 'singles' || pm.teamA.length === 1 || pm.teamB.length === 1;
+    const gameType = isSingles ? 'singles' : 'doubles';
     const a1 = playerMap.get(pm.teamA[0]);
-    const a2 = playerMap.get(pm.teamA[1]);
+    const a2 = pm.teamA[1] ? playerMap.get(pm.teamA[1]) : undefined;
     const b1 = playerMap.get(pm.teamB[0]);
-    const b2 = playerMap.get(pm.teamB[1]);
+    const b2 = pm.teamB[1] ? playerMap.get(pm.teamB[1]) : undefined;
 
     const liveState = createInitialLiveState({
-      gameType: 'doubles',
+      gameType,
       scoringMode: session.scoring_mode,
       targetScore: session.target_score,
       winByTwo: session.win_by_two,
@@ -232,23 +235,34 @@ async function createMatchesForProposal(params: {
       teamBPlayers: pm.teamB,
     });
 
+    const participants = isSingles
+      ? [
+          { player_id: pm.teamA[0], team: 'A' as const, starting_side: 'right' as const },
+          { player_id: pm.teamB[0], team: 'B' as const, starting_side: 'right' as const },
+        ]
+      : [
+          { player_id: pm.teamA[0], team: 'A' as const, starting_side: 'right' as const },
+          { player_id: pm.teamA[1], team: 'A' as const, starting_side: 'left' as const },
+          { player_id: pm.teamB[0], team: 'B' as const, starting_side: 'right' as const },
+          { player_id: pm.teamB[1], team: 'B' as const, starting_side: 'left' as const },
+        ];
+
     const match = await repo.createMatch({
       session_id: session.id,
       round_number: roundNumber,
       court_number: pm.court_number,
-      game_type: 'doubles',
+      game_type: gameType,
       scoring_mode: session.scoring_mode,
       target_score: session.target_score,
       win_by_two: session.win_by_two,
       status: 'scheduled',
-      team_a_name: `${firstName(a1, 'P1')} & ${firstName(a2, 'P2')}`,
-      team_b_name: `${firstName(b1, 'P3')} & ${firstName(b2, 'P4')}`,
-      participants: [
-        { player_id: pm.teamA[0], team: 'A', starting_side: 'right' },
-        { player_id: pm.teamA[1], team: 'A', starting_side: 'left' },
-        { player_id: pm.teamB[0], team: 'B', starting_side: 'right' },
-        { player_id: pm.teamB[1], team: 'B', starting_side: 'left' },
-      ],
+      team_a_name: isSingles
+        ? firstName(a1, 'Player 1')
+        : `${firstName(a1, 'P1')} & ${firstName(a2, 'P2')}`,
+      team_b_name: isSingles
+        ? firstName(b1, 'Player 2')
+        : `${firstName(b1, 'P3')} & ${firstName(b2, 'P4')}`,
+      participants,
       live_state: liveState,
     });
     createdMatches.push(match);
@@ -260,13 +274,15 @@ async function createMatchesForProposal(params: {
 app.post('/api/sessions', async (req, res) => {
   try {
     const body = req.body ?? {};
-    if (!body.title || !Array.isArray(body.player_ids) || body.player_ids.length < 4) {
-      res.status(400).json({ error: 'Session title and at least 4 players are required' });
+    const format = (body.format ?? 'rotating_partners') as import('../../shared/types').SessionFormat;
+    const minPlayers = format === 'singles' ? 3 : 4;
+    if (!body.title || !Array.isArray(body.player_ids) || body.player_ids.length < minPlayers) {
+      res.status(400).json({ error: `Session title and at least ${minPlayers} players are required` });
       return;
     }
     const session = await repo.createSession({
       title: body.title,
-      format: body.format ?? 'rotating_partners',
+      format,
       courts_count: Number(body.courts_count ?? 2),
       scoring_mode: body.scoring_mode ?? 'side_out',
       target_score: Number(body.target_score ?? 11) as 7 | 11 | 15 | 21,
@@ -369,6 +385,9 @@ app.post('/api/sessions/:id/end', async (req, res) => {
 app.delete('/api/sessions/:id', async (req, res) => {
   try {
     const ok = await repo.deleteSession(req.params.id);
+    if (ok) {
+      await syncPlayerRatings().catch(() => undefined);
+    }
     res.json({ deleted: ok });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to delete session' });
@@ -485,6 +504,100 @@ app.patch('/api/matches/:id', async (req, res) => {
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to update match' });
+  }
+});
+
+app.post('/api/matches/:id/substitute', async (req, res) => {
+  try {
+    const { out_player_id, in_player_id } = req.body ?? {};
+    if (!out_player_id || !in_player_id || out_player_id === in_player_id) {
+      res.status(400).json({ error: 'Select two different players to substitute' });
+      return;
+    }
+
+    const existing = await repo.getMatch(req.params.id);
+    if (!existing) {
+      res.status(404).json({ error: 'Match not found' });
+      return;
+    }
+    if (!existing.participants.some((p) => p.player_id === out_player_id)) {
+      res.status(400).json({ error: 'Outgoing player is not in this match' });
+      return;
+    }
+    if (existing.participants.some((p) => p.player_id === in_player_id)) {
+      res.status(400).json({ error: 'Incoming player is already in this match' });
+      return;
+    }
+    if (existing.session_id) {
+      const session = await repo.getSession(existing.session_id);
+      if (
+        session &&
+        !session.players.some((sp) => sp.active && sp.player_id === in_player_id)
+      ) {
+        res.status(400).json({ error: 'Incoming player must be checked in to this session' });
+        return;
+      }
+    }
+
+    const players = await repo.listPlayers();
+    const playerMap = new Map(players.map((p) => [p.id, p]));
+    if (!playerMap.has(in_player_id)) {
+      res.status(404).json({ error: 'Incoming player not found' });
+      return;
+    }
+
+    const updatedParticipants = existing.participants.map((p) =>
+      p.player_id === out_player_id ? { ...p, player_id: in_player_id } : p
+    );
+
+    const teamA = updatedParticipants.filter((p) => p.team === 'A');
+    const teamB = updatedParticipants.filter((p) => p.team === 'B');
+    const isSingles = existing.game_type === 'singles';
+    const teamAName = isSingles
+      ? firstName(playerMap.get(teamA[0]?.player_id), 'Player 1')
+      : `${firstName(playerMap.get(teamA[0]?.player_id), 'P1')} & ${firstName(playerMap.get(teamA[1]?.player_id), 'P2')}`;
+    const teamBName = isSingles
+      ? firstName(playerMap.get(teamB[0]?.player_id), 'Player 2')
+      : `${firstName(playerMap.get(teamB[0]?.player_id), 'P3')} & ${firstName(playerMap.get(teamB[1]?.player_id), 'P4')}`;
+
+    const updatedLiveState = existing.live_state
+      ? {
+          ...existing.live_state,
+          version: (existing.live_state.version ?? existing.rallies.length) + 1,
+          positions: {
+            teamA: {
+              right:
+                existing.live_state.positions.teamA.right === out_player_id
+                  ? in_player_id
+                  : existing.live_state.positions.teamA.right,
+              left:
+                existing.live_state.positions.teamA.left === out_player_id
+                  ? in_player_id
+                  : existing.live_state.positions.teamA.left,
+            },
+            teamB: {
+              right:
+                existing.live_state.positions.teamB.right === out_player_id
+                  ? in_player_id
+                  : existing.live_state.positions.teamB.right,
+              left:
+                existing.live_state.positions.teamB.left === out_player_id
+                  ? in_player_id
+                  : existing.live_state.positions.teamB.left,
+            },
+          },
+        }
+      : existing.live_state;
+
+    const updated = await repo.updateMatch(existing.id, {
+      participants: updatedParticipants,
+      team_a_name: teamAName,
+      team_b_name: teamBName,
+      live_state: updatedLiveState,
+    });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to substitute player' });
   }
 });
 

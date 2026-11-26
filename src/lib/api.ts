@@ -172,6 +172,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ team_a_score, team_b_score }),
     }),
+  substituteMatchPlayer: (id: string, out_player_id: string, in_player_id: string) =>
+    request<Match>(`/matches/${id}/substitute`, {
+      method: 'POST',
+      body: JSON.stringify({ out_player_id, in_player_id }),
+    }),
   deleteMatch: (id: string) =>
     request<{ deleted: boolean }>(`/matches/${id}`, { method: 'DELETE' }),
 

@@ -74,6 +74,7 @@ export interface UpdateMatchPatch {
   winner_team?: TeamId | null;
   completed_at?: string | null;
   duration_seconds?: number;
+  participants?: MatchParticipant[];
   live_state?: LiveGameState | null;
   rallies?: RallyEvent[];
   expected_version?: number;

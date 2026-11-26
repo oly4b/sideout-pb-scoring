@@ -1,7 +1,9 @@
 import {
+  ArrowRight,
   Award,
   CheckCircle2,
   Eye,
+  History,
   Home,
   LayoutGrid,
   Maximize2,
@@ -64,6 +66,7 @@ interface ScorekeeperViewProps {
   onSelectMatch: (match: Match | null) => void;
   onMatchUpdated: (match: Match) => void;
   onBackToSession?: (sessionId: string) => void;
+  onOpenHistory?: () => void;
   onNotify: (msg: string) => void;
 }
 
@@ -119,6 +122,7 @@ export function ScorekeeperView({
   onSelectMatch,
   onMatchUpdated,
   onBackToSession,
+  onOpenHistory,
   onNotify,
 }: ScorekeeperViewProps) {
   const t = copy[lang].scorekeeper;
@@ -1512,27 +1516,72 @@ export function ScorekeeperView({
                           if (document.fullscreenElement) {
                             void document.exitFullscreen().catch(() => {});
                           }
-                          if (activeMatch.session_id && onBackToSession) {
-                            onBackToSession(activeMatch.session_id);
-                          } else {
-                            onSelectMatch(null);
-                          }
+                          onSelectMatch(null);
                         }}
                       >
-                        <Home size={16} />{' '}
-                        {activeMatch.session_id ? t.sessionHub : lang === 'ja' ? 'ホームへ戻る' : 'Back Home'}
+                        <Home size={16} /> {lang === 'ja' ? 'ホームへ戻る' : 'Back Home'}
                       </button>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={handleUndo}
-                        disabled={liveState.rallies.length === 0 || spectatorMode}
-                      >
-                        <Undo2 size={16} /> {t.undo}
-                      </button>
-                      <button type="button" className="btn btn-lime" onClick={handleRematch}>
-                        <RefreshCw size={16} /> {t.rematch}
-                      </button>
+                      {activeMatch.session_id ? (
+                        (() => {
+                          const nextSessionMatch = matches
+                            .filter(
+                              (m) =>
+                                m.session_id === activeMatch.session_id &&
+                                m.id !== activeMatch.id &&
+                                m.status !== 'completed'
+                            )
+                            .sort((a, b) => {
+                              const roundDiff =
+                                (a.round_number ?? Number.MAX_SAFE_INTEGER) -
+                                (b.round_number ?? Number.MAX_SAFE_INTEGER);
+                              if (roundDiff !== 0) return roundDiff;
+                              const courtDiff =
+                                (a.court_number ?? Number.MAX_SAFE_INTEGER) -
+                                (b.court_number ?? Number.MAX_SAFE_INTEGER);
+                              if (courtDiff !== 0) return courtDiff;
+                              return a.started_at.localeCompare(b.started_at);
+                            })[0];
+                          return (
+                            <button
+                              type="button"
+                              className="btn btn-lime"
+                              onClick={() => {
+                                if (nextSessionMatch) {
+                                  onSelectMatch(nextSessionMatch);
+                                  return;
+                                }
+                                if (document.fullscreenElement) {
+                                  void document.exitFullscreen().catch(() => {});
+                                }
+                                onBackToSession?.(activeMatch.session_id!);
+                              }}
+                            >
+                              {nextSessionMatch ? (
+                                <>
+                                  {lang === 'ja' ? '次の試合へ' : 'Next Game'} <ArrowRight size={16} />
+                                </>
+                              ) : (
+                                <>
+                                  {t.sessionHub} <ArrowRight size={16} />
+                                </>
+                              )}
+                            </button>
+                          );
+                        })()
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-lime"
+                          onClick={() => {
+                            if (document.fullscreenElement) {
+                              void document.exitFullscreen().catch(() => {});
+                            }
+                            onOpenHistory?.();
+                          }}
+                        >
+                          <History size={16} /> {lang === 'ja' ? '対戦履歴へ' : 'Sessions History'}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1542,11 +1591,16 @@ export function ScorekeeperView({
             (() => {
               const taggedRally = liveState.rallies.find((r) => r.seq === pendingTagSeq);
               const rallyWinner: TeamId = taggedRally?.rally_winner ?? 'A';
-              const servingTeam: TeamId = taggedRally?.serving_team ?? liveState.servingTeam;
+              const servingTeamWon = taggedRally ? taggedRally.event_type === 'point' : true;
+              const servingTeamDuringRally: TeamId = servingTeamWon
+                ? rallyWinner
+                : rallyWinner === 'A'
+                  ? 'B'
+                  : 'A';
 
               const renderSideTags = (sideTeam: TeamId) => {
                 const isWinner = sideTeam === rallyWinner;
-                const isServer = sideTeam === servingTeam;
+                const isServer = sideTeam === servingTeamDuringRally;
                 const tagIds: RallyOutcomeTag[] = isWinner
                   ? isServer
                     ? ['ace', 'winner']
@@ -1571,13 +1625,6 @@ export function ScorekeeperView({
                         </button>
                       );
                     })}
-                    <button
-                      type="button"
-                      className="fs-board-tag-skip"
-                      onClick={() => setPendingTagSeq(null)}
-                    >
-                      {lang === 'ja' ? 'スキップ' : 'Skip'}
-                    </button>
                   </div>
                 );
               };
@@ -1592,15 +1639,26 @@ export function ScorekeeperView({
                       {activeMatch.team_a_name}
                     </span>
                     {renderSideTags('A')}
-                    <span className={`fs-board-status-pill ${rallyWinner === 'A' ? 'is-active' : ''}`}>
-                      {rallyWinner === 'A'
-                        ? lang === 'ja'
-                          ? `ラリー #${pendingTagSeq} 獲得`
-                          : `Won Rally #${pendingTagSeq}`
-                        : lang === 'ja'
-                          ? 'ミス・失点要因'
-                          : 'Fault / Error'}
-                    </span>
+                    <div className="fs-board-tag-footer">
+                      <span className={`fs-board-status-pill ${rallyWinner === 'A' ? 'is-active' : ''}`}>
+                        {rallyWinner === 'A'
+                          ? lang === 'ja'
+                            ? `ラリー #${pendingTagSeq} 獲得`
+                            : `Won Rally #${pendingTagSeq}`
+                          : lang === 'ja'
+                            ? 'ミス・失点要因'
+                            : 'Fault / Error'}
+                      </span>
+                      {rallyWinner !== 'A' && (
+                        <button
+                          type="button"
+                          className="fs-board-tag-skip"
+                          onClick={() => setPendingTagSeq(null)}
+                        >
+                          {lang === 'ja' ? 'スキップ' : 'Skip'}
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div
@@ -1611,15 +1669,26 @@ export function ScorekeeperView({
                       {activeMatch.team_b_name}
                     </span>
                     {renderSideTags('B')}
-                    <span className={`fs-board-status-pill ${rallyWinner === 'B' ? 'is-active' : ''}`}>
-                      {rallyWinner === 'B'
-                        ? lang === 'ja'
-                          ? `ラリー #${pendingTagSeq} 獲得`
-                          : `Won Rally #${pendingTagSeq}`
-                        : lang === 'ja'
-                          ? 'ミス・失点要因'
-                          : 'Fault / Error'}
-                    </span>
+                    <div className="fs-board-tag-footer">
+                      <span className={`fs-board-status-pill ${rallyWinner === 'B' ? 'is-active' : ''}`}>
+                        {rallyWinner === 'B'
+                          ? lang === 'ja'
+                            ? `ラリー #${pendingTagSeq} 獲得`
+                            : `Won Rally #${pendingTagSeq}`
+                          : lang === 'ja'
+                            ? 'ミス・失点要因'
+                            : 'Fault / Error'}
+                      </span>
+                      {rallyWinner !== 'B' && (
+                        <button
+                          type="button"
+                          className="fs-board-tag-skip"
+                          onClick={() => setPendingTagSeq(null)}
+                        >
+                          {lang === 'ja' ? 'スキップ' : 'Skip'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -1633,7 +1702,7 @@ export function ScorekeeperView({
                   liveState.winnerTeam === 'A' || (liveState.servingTeam === 'A' && !liveState.winnerTeam)
                     ? 'is-serving-a'
                     : ''
-                }`}
+                } ${gamePointTeam === 'A' && !liveState.winnerTeam ? 'has-gp' : ''}`}
                 style={{
                   opacity: liveState.winnerTeam && liveState.winnerTeam !== 'A' ? 0.45 : 1,
                 }}
@@ -1673,7 +1742,7 @@ export function ScorekeeperView({
                         : 'FINAL'}
                   </span>
                 ) : (
-                  <span className="fs-board-status-pill">{t.tapHere}</span>
+                  <span className="fs-board-status-pill is-hint">{t.tapHere}</span>
                 )}
               </button>
 
@@ -1684,7 +1753,7 @@ export function ScorekeeperView({
                   liveState.winnerTeam === 'B' || (liveState.servingTeam === 'B' && !liveState.winnerTeam)
                     ? 'is-serving-b'
                     : ''
-                }`}
+                } ${gamePointTeam === 'B' && !liveState.winnerTeam ? 'has-gp' : ''}`}
                 style={{
                   opacity: liveState.winnerTeam && liveState.winnerTeam !== 'B' ? 0.45 : 1,
                 }}
@@ -1724,7 +1793,7 @@ export function ScorekeeperView({
                         : 'FINAL'}
                   </span>
                 ) : (
-                  <span className="fs-board-status-pill">{t.tapHere}</span>
+                  <span className="fs-board-status-pill is-hint">{t.tapHere}</span>
                 )}
               </button>
             </div>
