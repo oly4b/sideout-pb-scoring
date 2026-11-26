@@ -1,8 +1,24 @@
+# Dependencies & build output
 node_modules/
 dist/
+dist-ssr/
+
+# Environment & secrets
 .env
 .env.local
+.env.*.local
+
+# Local runtime data & exports
 server/data/db.json
 server/data/*.zip
+
+# Logs, caches & test artifacts
 *.log
+npm-debug.log*
+coverage/
+playwright-report/
+test-results/
+
+# OS & deployment tooling
 .DS_Store
+.vercel
