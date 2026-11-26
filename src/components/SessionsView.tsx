@@ -459,15 +459,6 @@ export function SessionsView({
                         <span className="scheduler-booked-time">
                           <Clock size={12} /> {b.start_hour}:00–{b.end_hour}:00
                         </span>
-                        <span className="scheduler-booked-type">
-                          {b.court_type === 'indoor'
-                            ? lang === 'ja'
-                              ? '屋内'
-                              : 'Indoor'
-                            : lang === 'ja'
-                              ? '屋外'
-                              : 'Outdoor'}
-                        </span>
                       </div>
                       <div className="scheduler-booked-venue">
                         <MapPin size={13} style={{ color: 'var(--brand-emerald)' }} />
@@ -485,6 +476,15 @@ export function SessionsView({
                         )}
                         <span className="scheduler-going-pill">
                           {lang === 'ja' ? `参加 ${yesList.length}` : `Going: ${yesList.length}`}
+                        </span>
+                        <span className="scheduler-booked-type">
+                          {b.court_type === 'indoor'
+                            ? lang === 'ja'
+                              ? '屋内'
+                              : 'Indoor'
+                            : lang === 'ja'
+                              ? '屋外'
+                              : 'Outdoor'}
                         </span>
                       </div>
                       {yesList.length > 0 && (
