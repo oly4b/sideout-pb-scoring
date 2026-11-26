@@ -5,6 +5,7 @@ export interface VenueInfo {
   courtType: 'indoor' | 'outdoor';
 }
 
+/** Known Okayama/Kurashiki pickleball venues with indoor/outdoor court metadata. */
 export const VENUES: VenueInfo[] = [
   {
     id: 'fukuda',
@@ -88,6 +89,7 @@ export const VENUES: VenueInfo[] = [
 
 const VENUE_MAP = new Map<string, VenueInfo>(VENUES.map((v) => [v.id, v]));
 
+/** Resolves a venue ID or manual venue name into structured venue metadata with court type. */
 export function resolveVenue(
   venueId: string,
   manualVenueName?: string | null,

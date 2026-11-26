@@ -11,6 +11,7 @@ interface DatabaseViewProps {
   onNotify: (msg: string) => void;
 }
 
+/** Database status, Supabase SQL schema inspector, and JSON/CSV/ZIP export panel. */
 export function DatabaseView({ lang, dbStatus, onRefresh, onNotify }: DatabaseViewProps) {
   const t = copy[lang].database;
   const [schemaSql, setSchemaSql] = useState('');

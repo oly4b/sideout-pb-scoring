@@ -1,6 +1,6 @@
 # 桃dinks — Sideout Pickleball Scorekeeper & Session Manager
 
-A full-stack, mobile-first PWA for **桃dinks** (Okayama & Kurashiki Pickleball) combining a **live court-by-court scorekeeper**, a **session & rotation organizer**, **DUPR-style player ratings**, and **Supabase / PostgreSQL** persistence (with an automatic zero-config local JSON fallback).
+A full-stack, mobile-first PWA for **桃dinks** (Okayama & Kurashiki Pickleball) combining a **live court-by-court scorekeeper**, a **session & rotation organizer**, **DUPR-style player ratings**, **match & player analytics**, and **Supabase / PostgreSQL** persistence (with an automatic zero-config local JSON fallback).
 
 Designed as a unified companion app to [**桃dinks Session Scheduler**](https://pb-session-scheduler.vercel.app/), sharing the same `#1B365D` / `#2B547E` navy + optic-lime visual system, bilingual **JA / EN** switcher, and OS-aware light/dark themes.
 
@@ -11,13 +11,15 @@ Designed as a unified companion app to [**桃dinks Session Scheduler**](https://
 ### 1. Live Court Scorekeeper (`Play`)
 - **Official Pickleball Rules (`shared/pickleballEngine.ts`)**:
   - **Side-Out (0-0-2 start)** and **Rally** scoring modes.
-  - **Doubles** & **Singles** support with target scores of **11, 15, or 21** and configurable **Win by 2**.
+  - **Doubles** & **Singles** support with target scores of **11, 15, or 21**, configurable **Win by 2**, and **Switch ends (6)** (auto-enabled for outdoor sessions).
 - **Interactive Match Stage (`src/components/match/`)**:
   - **Court View (`SideoutCourtCanvas`)**: Top-down pickleball court showing live left/right service boxes, automatic box swaps on points scored, and active server highlighting.
   - **Big Scoreboard View (`SideoutMatchStage`, `RollingDigit`)**: High-contrast spectator view with animated rolling digits, `FlameBadge` hot-streak indicators, `PickleballMascot`, and `GoodGameOverlay` match-completion celebration.
-- **Live Match Controls & Feedback**:
-  - **Voice Score Announcer** (`Web Speech API`), **Sound Effects** (`src/lib/soundEffects.ts`), and **Momentum Gauge**.
-  - Full **Undo / Redo**, manual server/box correction, and **Auto-Save Crash Recovery** with instant resume for in-progress matches.
+- **Detailed Rally Tagging (`Detailed Stats`, on by default)**:
+  - Context-aware 2×2 modal popout after each rally with fixed muscle-memory positions: `Ace` / `Service Fault` (top-left, alternating by whether the serving or receiving team won), `Winner` (top-right), `Net` (bottom-left), and `Out` (bottom-right), plus `Skip`.
+- **Live Match Controls & Persistence**:
+  - **Voice Score Announcer** (`Web Speech API`), **Sound Effects** (`src/lib/soundEffects.ts`), **Momentum Gauge**, and live **Match Analytics**.
+  - Full **Undo / Redo**, manual server/box correction, and **Serialized Auto-Save** with instant resume for in-progress matches.
 
 ### 2. Session & Rotation Organizer (`Sessions`)
 - **Rotation Formats (`shared/rotationEngine.ts`)**:
@@ -26,28 +28,30 @@ Designed as a unified companion app to [**桃dinks Session Scheduler**](https://
   - **Set Partners**: Fixed pairs stay together and rotate opponents across rounds.
   - **Open Play**: Flexible drop-in rotation balancing games played and wait queue across 1–6 courts.
 - **Session Scheduler Sync (`server/src/schedulerSync.ts`)**:
-  - Pulls upcoming booked sessions, court types (`Indoor` / `Outdoor`), venue details, Google Maps links (via `getSafeMapUrl`), and expandable attendee lists (`Going` pill) directly from **桃dinks Session Scheduler**, with one-tap **Use** to prefill a new session.
-  - **Okayama & Kurashiki Venue Catalog (`shared/venues.ts`)** for quick venue selection.
-- **Court Launch & Standings**:
-  - Launch any court directly into the live scorekeeper or record results via **Quick Score**, with live **Session Standings** and typed-confirmation session deletion.
+  - Pulls upcoming booked sessions, court types (`Indoor` / `Outdoor`), venue details, Google Maps links, and expandable attendee lists directly from **桃dinks Session Scheduler**, with one-tap **Use** to prefill a new session.
+  - **Okayama & Kurashiki Venue Catalog (`shared/venues.ts`)** with dropdown + manual entry mode and automatic outdoor end-switch detection.
+- **Session Highlights & Standings**:
+  - Live **Session Standings**, **Session Highlights** (**Best Pair**, **Closest Match**, **Outdoor Out/Fault Rate**), **Quick Score** entry, and typed-confirmation session deletion.
 
-### 3. Game History & Player Analytics (`History` & `Players`)
-- **Match History (`HistoryView`)**:
-  - Search and filter by player, match status (`All` / `Final` / `Live`), and session.
-  - Inspect any match for a **Score Progression SVG chart** and **Rally-by-Rally Timeline**.
+### 3. Match Analytics, History & Player Intelligence (`History` & `Players`)
+- **Match History & Analytics (`HistoryView`, `MatchAnalyticsPanel`)**:
+  - Search and filter by player, match status (`All` / `Final` / `Live`), and session, with **`Upset`** (`番狂わせ`) badges on underdog wins (`0.15+` rating gap).
+  - **Score Progression SVG chart**, **Rally-by-Rally Timeline** (with outcome tags), and comprehensive **Match Analytics** (Serve Win %, Pts/Possession, Break % & Side-Outs, Server 1 vs. 2, Longest Run, Max Lead, Game Points Saved, Lead Changes, Ties, Comebacks, Clutch Rallies, Rally Pace, Pre/Post-Switch Splits, and Rally Endings).
 - **Dynamic DUPR-Style Rating Engine (`shared/ratingEngine.ts`)**:
-  - New players start unrated (`NR`, `3.0` internal baseline) and update dynamically after completed matches based on opponent strength, match outcome, and point-margin sensitivity.
-- **Player Profiles & Leaderboard (`PlayersView`, `shared/statsEngine.ts`)**:
-  - Club leaderboard (`Rating`, `W-L`, `Win %`, `+/-`, `Streak`) plus per-player **Best Partners** and **Head-to-Head vs Opponents** breakdowns.
+  - New players start unrated (`NR`, `3.0` internal baseline) and unlock public ratings after `5` completed matches based on opponent strength, match outcome, and point-margin sensitivity.
+- **Player Skill Profiles, Attributes & Splits (`PlayersView`, `shared/pickleballEngine.ts`, `shared/statsEngine.ts`)**:
+  - Club leaderboard (`Rating`, `W-L`, `Win %`, `+/-`, `Streak`) and typed-confirmation player removal.
+  - **Department Skill Breakdown**: Service Win % & Pts/Turn, Receiving Win % & Breaks, Right/Left Box Win %, Clutch (8+) Win %, and Shot Tags.
+  - **Inferred Playstyle Attributes** *(unlocked at `5+` rated games & `100+` rallies)*: 4-axis **Serve / Return / Clutch / Consistency** bars, playstyle badges (`Serve Specialist`, `Return Wall`, `Clutch`, `Right-Side Anchor`, `Left-Side Anchor`, `Clean Finisher`, `Steady`), and **Miss Tendency** (`Net misses` vs `Long / Out misses`).
+  - **Situational & Environment Splits**: Indoor vs. Outdoor win %, Stamina (`R1–2` vs. `R4+`), Side-Out vs. Rally scoring, Underdog record (`Giant-Killer` badge), **Partner Synergy** (`+/-%`), and **Head-to-Head vs. Opponents**.
 
 ### 4. Database, Export & Unified 桃dinks Shell (`Database` & Header)
 - **Pluggable Persistence (`server/src/db/`)**:
-  - **Supabase (`SupabaseAdapter`)** via `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_PUBLISHABLE_KEY`.
-  - **PostgreSQL (`PostgresAdapter`)** via `DATABASE_URL`.
+  - **Supabase (`SupabaseAdapter`)** with per-match update serialization and idempotent `rally_events` upsert + tail pruning.
+  - **PostgreSQL (`PostgresAdapter`)** via `DATABASE_URL` with SQL transactions.
   - **Local JSON (`LocalJsonAdapter`)** automatic fallback to `server/data/db.json` locally (or `/tmp/momodinks-db.json` on Vercel).
 - **Schema & Exports (`DatabaseView`)**:
-  - Full SQL migration (`supabase/migrations/001_initial_schema.sql`) with `players`, `sessions`, `session_players`, `matches`, `match_participants`, `rally_events`, `player_standings` view, RLS policies, and `anon`/`authenticated`/`service_role` grants.
-  - Built-in **JSON** full backup, **CSV** match history export, and **Project ZIP** download (`/api/export-project`).
+  - Full SQL migration (`supabase/migrations/001_initial_schema.sql`), **JSON** backup, **CSV** match export, and **Project ZIP** download (`/api/export-project`).
 - **Unified Header & UX**:
   - Bilingual **JA / EN** switcher (`src/lib/i18n.ts`), OS-synced **Light / Dark** theme toggle (`momodinks_theme`), one-tap **Share**, and direct link to **桃dinks Session Scheduler** (`VITE_SESSION_SCHEDULER_URL`).
 
@@ -62,20 +66,21 @@ Designed as a unified companion app to [**桃dinks Session Scheduler**](https://
 │   ├── schedulerSync.ts              # Syncs upcoming booked sessions & attendees from Scheduler
 │   └── db/                           # Repository & adapters (Supabase, Postgres, Local JSON)
 ├── shared/
-│   ├── pickleballEngine.ts           # Pure scoring, positioning, undo/redo, momentum & callouts
+│   ├── pickleballEngine.ts           # Scoring, box swaps, undo/redo, analytics, skill profiles & splits
 │   ├── rotationEngine.ts             # Rotating Partners, King of the Court, Set Partners, Open Play
 │   ├── ratingEngine.ts               # Dynamic DUPR-style rating & match delta engine
-│   ├── statsEngine.ts                # Standings, partner synergy, and head-to-head stats
+│   ├── statsEngine.ts                # Standings, partner records, and head-to-head stats
 │   ├── venues.ts                     # Okayama & Kurashiki venue metadata
 │   └── types.ts                      # Shared TypeScript domain contracts
 ├── src/
 │   ├── App.tsx                       # App shell, header, JA/EN & theme state, tab navigation
 │   ├── index.css                     # 桃dinks design tokens, tactile press, court & card styles
 │   ├── components/
-│   │   ├── ScorekeeperView.tsx       # Match setup & live scorekeeper wrapper
-│   │   ├── SessionsView.tsx          # Session manager, scheduler sync & round standings
-│   │   ├── HistoryView.tsx           # Match history, SVG charts & rally timelines
-│   │   ├── PlayersView.tsx           # Leaderboard & player head-to-head analytics
+│   │   ├── ScorekeeperView.tsx       # Match setup, live scorekeeper, and rally outcome popout
+│   │   ├── MatchAnalyticsPanel.tsx   # Live & post-match head-to-head analytics card
+│   │   ├── SessionsView.tsx          # Session manager, scheduler sync, highlights & standings
+│   │   ├── HistoryView.tsx           # Match history, upset tags, SVG charts & rally timelines
+│   │   ├── PlayersView.tsx           # Leaderboard, department skills, attributes & splits
 │   │   ├── DatabaseView.tsx          # DB health, SQL schema viewer, JSON/CSV/ZIP exports
 │   │   └── match/                    # Court canvas, scoreboard, rolling digits, mascot, overlays
 │   └── lib/                          # API client, i18n copy, sound effects, Supabase client
@@ -126,7 +131,7 @@ npm run dev
 ```bash
 npm run dev        # Start Express API + Vite dev server concurrently
 npm run lint       # Run oxlint
-npm test           # Run Vitest unit tests (scoring, rotation, and rating engines)
+npm test           # Run Vitest unit tests (scoring, analytics, rotation, and rating engines)
 npm run build      # Type-check, build Vite SPA, and bundle api/index.mjs
 npm run build:api  # Rebuild only the Vercel serverless API bundle
 ```

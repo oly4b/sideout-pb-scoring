@@ -47,6 +47,7 @@ function scheduleTone(
   osc.stop(now + duration + 0.02);
 }
 
+/** Plays synthesized Web Audio cues for rally outcomes (point, 2nd server, side-out, or victory fanfare). */
 export async function playRallySound(nextState: LiveGameState): Promise<void> {
   const ctx = await ensureReadyAudioContext();
   if (!ctx) return;
@@ -89,6 +90,7 @@ export async function playRallySound(nextState: LiveGameState): Promise<void> {
   }
 }
 
+/** Plays a short descending Web Audio cue when a rally is undone. */
 export async function playUndoSound(): Promise<void> {
   const ctx = await ensureReadyAudioContext();
   if (!ctx) return;

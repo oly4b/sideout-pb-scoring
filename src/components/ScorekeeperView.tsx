@@ -11,6 +11,7 @@ import {
   Undo2,
   Volume2,
   VolumeX,
+  X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -20,10 +21,12 @@ import {
   getActiveServerPlayerId,
   getActiveServerSide,
   isGamePoint,
+  RALLY_OUTCOME_TAGS,
   recordRally,
   redoLastRally,
   swapServerManually,
   swapTeamBoxesManually,
+  tagRallyOutcome,
   undoLastRally,
 } from '../../shared/pickleballEngine';
 import { computeDuprRatings, formatRating } from '../../shared/ratingEngine';
@@ -32,12 +35,14 @@ import type {
   LiveGameState,
   Match,
   Player,
+  RallyOutcomeTag,
   ScoringMode,
   TargetScore,
   TeamId,
 } from '../../shared/types';
 import { api } from '../lib/api';
 import { copy, type Lang } from '../lib/i18n';
+import { MatchAnalyticsPanel } from './MatchAnalyticsPanel';
 import { playRallySound, playUndoSound } from '../lib/soundEffects';
 import { SideoutMatchStage } from './match/SideoutMatchStage';
 
@@ -60,6 +65,7 @@ function formatDuration(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+/** Live court/scoreboard scoring interface with quick-match setup, serialized persistence, and rally tagging. */
 export function ScorekeeperView({
   lang,
   players,
@@ -94,10 +100,18 @@ export function ScorekeeperView({
 
   const [viewMode, setViewMode] = useState<'court' | 'scoreboard'>('court');
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [detailedStats, setDetailedStats] = useState(true);
+  const [pendingTagSeq, setPendingTagSeq] = useState<number | null>(null);
   const [liveState, setLiveState] = useState<LiveGameState | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [saving, setSaving] = useState(false);
   const saveTimerRef = useRef<number | null>(null);
+  const inFlightSaveRef = useRef<Promise<void> | null>(null);
+  const pendingSaveRef = useRef<{
+    match: Match;
+    next: LiveGameState;
+    durationSeconds: number;
+  } | null>(null);
   const setupShellRef = useRef<HTMLDivElement | null>(null);
   const scoringSurfaceRef = useRef<HTMLDivElement | null>(null);
 
@@ -170,37 +184,58 @@ export function ScorekeeperView({
     return () => window.clearTimeout(timer);
   }, [activeMatch?.id, isLiveReady, viewMode]);
 
-  const persistMatchState = (match: Match, next: LiveGameState, immediate = false) => {
-    const doSave = async () => {
+  const flushPendingSave = () => {
+    if (inFlightSaveRef.current || !pendingSaveRef.current) {
+      return inFlightSaveRef.current ?? Promise.resolve();
+    }
+
+    const run = async () => {
       try {
         setSaving(true);
-        const isDone = next.winnerTeam !== null;
-        const updated = await api.updateMatch(match.id, {
-          status: isDone ? 'completed' : 'in_progress',
-          team_a_score: next.teamAScore,
-          team_b_score: next.teamBScore,
-          winner_team: next.winnerTeam,
-          completed_at: isDone ? new Date().toISOString() : null,
-          duration_seconds: elapsedSeconds,
-          live_state: next,
-          rallies: next.rallies,
-        });
-        onMatchUpdated(updated);
+        while (pendingSaveRef.current) {
+          const payload = pendingSaveRef.current;
+          pendingSaveRef.current = null;
+          const isDone = payload.next.winnerTeam !== null;
+          const updated = await api.updateMatch(payload.match.id, {
+            status: isDone ? 'completed' : 'in_progress',
+            team_a_score: payload.next.teamAScore,
+            team_b_score: payload.next.teamBScore,
+            winner_team: payload.next.winnerTeam,
+            completed_at: isDone ? new Date().toISOString() : null,
+            duration_seconds: payload.durationSeconds,
+            live_state: payload.next,
+            rallies: payload.next.rallies,
+          });
+          onMatchUpdated(updated);
+        }
       } catch (err) {
         onNotify(err instanceof Error ? err.message : 'Failed to save rally');
       } finally {
+        inFlightSaveRef.current = null;
         setSaving(false);
+        if (pendingSaveRef.current) {
+          void flushPendingSave();
+        }
       }
     };
 
+    const promise = run();
+    inFlightSaveRef.current = promise;
+    return promise;
+  };
+
+  const persistMatchState = (match: Match, next: LiveGameState, immediate = false) => {
+    pendingSaveRef.current = { match, next, durationSeconds: elapsedSeconds };
     if (saveTimerRef.current) {
       window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
     }
     if (immediate) {
-      void doSave();
+      void flushPendingSave();
     } else {
       saveTimerRef.current = window.setTimeout(() => {
-        void doSave();
+        saveTimerRef.current = null;
+        void flushPendingSave();
       }, 220);
     }
   };
@@ -212,11 +247,26 @@ export function ScorekeeperView({
     if (soundEnabled) {
       void playRallySound(next);
     }
+    if (detailedStats) {
+      const lastSeq = next.rallies[next.rallies.length - 1]?.seq ?? null;
+      setPendingTagSeq(lastSeq);
+    } else if (pendingTagSeq !== null) {
+      setPendingTagSeq(null);
+    }
+    persistMatchState(activeMatch, next, next.winnerTeam !== null);
+  };
+
+  const handleTagRally = (tag: RallyOutcomeTag) => {
+    if (!activeMatch || !liveState || pendingTagSeq === null) return;
+    const next = tagRallyOutcome(liveState, pendingTagSeq, tag);
+    setLiveState(next);
+    setPendingTagSeq(null);
     persistMatchState(activeMatch, next, next.winnerTeam !== null);
   };
 
   const handleUndo = () => {
     if (!activeMatch || !liveState || liveState.rallies.length === 0) return;
+    setPendingTagSeq(null);
     const teamAParts = activeMatch.participants.filter((p) => p.team === 'A');
     const teamBParts = activeMatch.participants.filter((p) => p.team === 'B');
     const next = undoLastRally(
@@ -262,6 +312,14 @@ export function ScorekeeperView({
           ? 'B'
           : null;
     try {
+      if (saveTimerRef.current) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      pendingSaveRef.current = null;
+      if (inFlightSaveRef.current) {
+        await inFlightSaveRef.current.catch(() => undefined);
+      }
       setSaving(true);
       const finishedState: LiveGameState = { ...liveState, winnerTeam: winner };
       const updated = await api.updateMatch(activeMatch.id, {
@@ -685,6 +743,26 @@ export function ScorekeeperView({
                     />
                     {t.autoSwitchEnds} ({Math.ceil(targetScore / 2)})
                   </button>
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={detailedStats}
+                    className={`btn btn-sm ${detailedStats ? 'btn-lime' : 'btn-secondary'}`}
+                    style={{ borderRadius: 999, minHeight: 36 }}
+                    onClick={() => setDetailedStats((v) => !v)}
+                  >
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '999px',
+                        background: detailedStats ? '#0f172a' : 'var(--ink-muted)',
+                        opacity: detailedStats ? 0.85 : 0.45,
+                      }}
+                    />
+                    {lang === 'ja' ? '詳細統計' : 'Detailed Stats'}
+                  </button>
                 </div>
               </div>
             </div>
@@ -787,6 +865,29 @@ export function ScorekeeperView({
             title={soundEnabled ? 'Mute sound effects' : 'Enable sound effects'}
           >
             {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${detailedStats ? 'btn-lime' : 'btn-secondary'}`}
+            aria-pressed={detailedStats}
+            onClick={() => {
+              const nextVal = !detailedStats;
+              setDetailedStats(nextVal);
+              if (!nextVal) {
+                setPendingTagSeq(null);
+              }
+              onNotify(
+                lang === 'ja'
+                  ? nextVal
+                    ? '詳細統計タグをオンにしました'
+                    : '詳細統計タグをオフにしました'
+                  : nextVal
+                    ? 'Detailed rally tagging enabled'
+                    : 'Detailed rally tagging disabled'
+              );
+            }}
+          >
+            {lang === 'ja' ? '詳細統計' : 'Stats'}: {detailedStats ? 'ON' : 'OFF'}
           </button>
         </div>
       </div>
@@ -1069,6 +1170,121 @@ export function ScorekeeperView({
           </span>
         </div>
       </div>
+
+      {pendingTagSeq !== null && (() => {
+        const taggedRally = liveState.rallies.find((r) => r.seq === pendingTagSeq);
+        const rallyWinnerName = taggedRally
+          ? taggedRally.rally_winner === 'A'
+            ? activeMatch.team_a_name
+            : activeMatch.team_b_name
+          : '';
+        const servingTeamWon = taggedRally ? taggedRally.event_type === 'point' : true;
+        const visibleTags = RALLY_OUTCOME_TAGS.filter((tag) => {
+          if (servingTeamWon && tag.id === 'service_fault') return false;
+          if (!servingTeamWon && tag.id === 'ace') return false;
+          return true;
+        });
+
+        return (
+          <div className="modal-backdrop" onClick={() => setPendingTagSeq(null)}>
+            <div
+              className="modal-card"
+              style={{ maxWidth: 440 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h2>
+                  {lang === 'ja' ? `ラリー #${pendingTagSeq}` : `Rally #${pendingTagSeq}`}
+                  {taggedRally ? ` · ${taggedRally.callout}` : ''}
+                </h2>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-icon"
+                  aria-label={lang === 'ja' ? 'スキップ' : 'Skip'}
+                  onClick={() => setPendingTagSeq(null)}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="modal-body">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span className="tag" style={{ alignSelf: 'flex-start' }}>
+                    {servingTeamWon
+                      ? lang === 'ja'
+                        ? 'サーブ側得点'
+                        : 'Serving team scored'
+                      : lang === 'ja'
+                        ? 'レシーブ側ブレイク'
+                        : 'Receiving team won rally'}
+                  </span>
+                  <div style={{ fontSize: '1.02rem', fontWeight: 800, color: 'var(--ink-primary)' }}>
+                    {lang === 'ja'
+                      ? `${rallyWinnerName} の決着方法は？`
+                      : `How did ${rallyWinnerName} win this rally?`}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                    gap: 8,
+                  }}
+                >
+                  {visibleTags.map((tag, idx) => {
+                    const isOddLast = visibleTags.length % 2 === 1 && idx === visibleTags.length - 1;
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{
+                          minHeight: 48,
+                          fontWeight: 700,
+                          justifyContent: 'center',
+                          fontSize: '0.88rem',
+                          gridColumn: isOddLast ? '1 / -1' : undefined,
+                        }}
+                        onClick={() => handleTagRally(tag.id)}
+                      >
+                        {lang === 'ja' ? tag.ja : tag.en}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setPendingTagSeq(null)}
+                  >
+                    {lang === 'ja' ? 'スキップ' : 'Skip'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {liveState.rallies.length > 0 && (
+        <div className="card">
+          <MatchAnalyticsPanel
+            match={{
+              ...activeMatch,
+              team_a_score: liveState.teamAScore,
+              team_b_score: liveState.teamBScore,
+              winner_team: liveState.winnerTeam,
+              duration_seconds: elapsedSeconds,
+              rallies: liveState.rallies,
+            }}
+            lang={lang}
+            compact
+          />
+        </div>
+      )}
     </div>
   );
 }

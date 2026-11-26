@@ -121,7 +121,7 @@ export default function App() {
 
   const activeMatchSession = useMemo(
     () => (activeMatch?.session_id ? sessions.find((s) => s.id === activeMatch.session_id) : null),
-    [activeMatch?.session_id, sessions]
+    [activeMatch, sessions]
   );
 
   const activeMatchIsOutdoor = useMemo(() => {
@@ -437,6 +437,7 @@ export default function App() {
                 lang={lang}
                 players={players}
                 matches={matches}
+                sessions={sessions}
                 onRefreshAll={refreshAll}
                 onNotify={notify}
               />

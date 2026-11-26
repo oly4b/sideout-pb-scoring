@@ -1,8 +1,15 @@
 import { Plus, RefreshCw, Swords, Trash2, Trophy, UserCheck, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { formatRating } from '../../shared/ratingEngine';
+import {
+  computePlayerAttributes,
+  computePlayerSituationalSplits,
+  computePlayerSkillProfiles,
+  MIN_RALLIES_FOR_ATTRIBUTES,
+  RALLY_OUTCOME_TAGS,
+} from '../../shared/pickleballEngine';
+import { formatRating, MIN_MATCHES_FOR_RATING } from '../../shared/ratingEngine';
 import { computePlayerDetailStats, computeStandings } from '../../shared/statsEngine';
-import type { Match, Player, PlayerDetailStats } from '../../shared/types';
+import type { Match, Player, PlayerDetailStats, Session } from '../../shared/types';
 import { api } from '../lib/api';
 import { copy, type Lang } from '../lib/i18n';
 
@@ -10,13 +17,22 @@ interface PlayersViewProps {
   lang: Lang;
   players: Player[];
   matches: Match[];
+  sessions: Session[];
   onRefreshAll: () => Promise<void>;
   onNotify: (msg: string) => void;
 }
 
 const SWATCHES = ['#1D4ED8', '#15803D', '#E25747', '#B45309', '#0E7490', '#BE185D', '#3F6212', '#132B4F'];
 
-export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: PlayersViewProps) {
+/** Player leaderboard, DUPR-style ratings, department skill breakdown, attributes, and matchup history. */
+export function PlayersView({
+  lang,
+  players,
+  matches,
+  sessions,
+  onRefreshAll,
+  onNotify,
+}: PlayersViewProps) {
   const t = copy[lang].players;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -29,6 +45,17 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
   const [deleteTarget, setDeleteTarget] = useState<PlayerDetailStats | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
+
+  const skillProfiles = useMemo(
+    () => computePlayerSkillProfiles(players, matches),
+    [players, matches]
+  );
+  const selectedSkill = selectedId ? skillProfiles.get(selectedId) ?? null : null;
+  const situationalSplitsMap = useMemo(
+    () => computePlayerSituationalSplits(players, matches, sessions),
+    [players, matches, sessions]
+  );
+  const selectedSplits = selectedId ? situationalSplitsMap.get(selectedId) ?? null : null;
 
   const handleSyncFromScheduler = async () => {
     try {
@@ -83,6 +110,8 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
     () => (selectedId ? computePlayerDetailStats(selectedId, players, matches) : null),
     [selectedId, players, matches]
   );
+  const selectedAttributes =
+    selectedSkill && detail ? computePlayerAttributes(selectedSkill, detail.games_played) : null;
 
   const handleAddPlayer = async () => {
     const trimmedName = name.trim();
@@ -194,12 +223,12 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
             <thead>
               <tr>
                 <th>#</th>
-                <th>Player</th>
-                <th className="num">Rating</th>
-                <th className="num">W-L</th>
-                <th className="num">Win %</th>
+                <th>{lang === 'ja' ? 'プレイヤー' : 'Player'}</th>
+                <th className="num">{lang === 'ja' ? 'レーティング' : 'Rating'}</th>
+                <th className="num">{lang === 'ja' ? '勝-敗' : 'W-L'}</th>
+                <th className="num">{lang === 'ja' ? '勝率' : 'Win %'}</th>
                 <th className="num">+/-</th>
-                <th className="num">Streak</th>
+                <th className="num">{lang === 'ja' ? '連勝/連敗' : 'Streak'}</th>
               </tr>
             </thead>
             <tbody>
@@ -330,6 +359,288 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
             </div>
           </div>
 
+          {selectedSkill && selectedSkill.ralliesPlayed > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+                padding: '12px 14px',
+                borderRadius: 'var(--radius-md)',
+                background: 'var(--bg-subtle)',
+                border: '1px solid var(--border-subtle)',
+              }}
+            >
+              <div className="section-heading" style={{ margin: 0 }}>
+                {lang === 'ja' ? '部門別スキル分析' : 'Department Skill Breakdown'}
+                <span style={{ fontWeight: 500, color: 'var(--ink-muted)', marginLeft: 8 }}>
+                  {lang === 'ja'
+                    ? `(${selectedSkill.ralliesPlayed}ラリー)`
+                    : `(${selectedSkill.ralliesPlayed} rallies)`}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))',
+                  gap: 8,
+                }}
+              >
+                <div className="stat-card" style={{ padding: '10px 12px' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', fontWeight: 700 }}>
+                    {lang === 'ja' ? 'サーブ得点率' : 'Service Win %'}
+                  </div>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--team-a)' }}>
+                    {selectedSkill.serveWinPct !== null ? `${selectedSkill.serveWinPct}%` : '—'}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--ink-secondary)' }}>
+                    {selectedSkill.ptsPerServiceTurn !== null
+                      ? `${selectedSkill.ptsPerServiceTurn} ${lang === 'ja' ? '点/回' : 'pts/turn'}`
+                      : `${selectedSkill.serveWins}/${selectedSkill.servesTotal}`}
+                  </div>
+                </div>
+
+                <div className="stat-card" style={{ padding: '10px 12px' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', fontWeight: 700 }}>
+                    {lang === 'ja' ? 'レシーブ勝率' : 'Receiving Win %'}
+                  </div>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--accent)' }}>
+                    {selectedSkill.receiveWinPct !== null ? `${selectedSkill.receiveWinPct}%` : '—'}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--ink-secondary)' }}>
+                    {selectedSkill.receiveWins}/{selectedSkill.receiveRallies}{' '}
+                    {lang === 'ja' ? 'ブレイク' : 'breaks'}
+                  </div>
+                </div>
+
+                <div className="stat-card" style={{ padding: '10px 12px' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', fontWeight: 700 }}>
+                    {lang === 'ja' ? '左右ボックス別' : 'Right / Left Box'}
+                  </div>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--ink-primary)' }}>
+                    {selectedSkill.rightSideWinPct !== null ? `${selectedSkill.rightSideWinPct}%` : '—'}
+                    {' / '}
+                    {selectedSkill.leftSideWinPct !== null ? `${selectedSkill.leftSideWinPct}%` : '—'}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--ink-secondary)' }}>
+                    {lang === 'ja' ? '右(偶数) / 左(奇数)' : 'Even (R) / Odd (L)'}
+                  </div>
+                </div>
+
+                <div className="stat-card" style={{ padding: '10px 12px' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', fontWeight: 700 }}>
+                    {lang === 'ja' ? '終盤クラッチ' : 'Clutch (8+)'}
+                  </div>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--team-b)' }}>
+                    {selectedSkill.clutchWinPct !== null ? `${selectedSkill.clutchWinPct}%` : '—'}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--ink-secondary)' }}>
+                    {selectedSkill.clutchWins}/{selectedSkill.clutchRallies}{' '}
+                    {lang === 'ja' ? 'ラリー' : 'rallies'}
+                  </div>
+                </div>
+              </div>
+
+              {Object.values(selectedSkill.tagCounts).some((v) => (v ?? 0) > 0) && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--ink-muted)' }}>
+                    {lang === 'ja' ? 'ショット別記録:' : 'Shot Tags:'}
+                  </span>
+                  {RALLY_OUTCOME_TAGS.filter((t) => (selectedSkill.tagCounts[t.id] ?? 0) > 0).map((t) => (
+                    <span key={t.id} className="tag tag-lime">
+                      {lang === 'ja' ? t.ja : t.en} · {selectedSkill.tagCounts[t.id]}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {selectedAttributes && (
+                <div
+                  style={{
+                    borderTop: '1px solid var(--border-subtle)',
+                    paddingTop: 10,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                  }}
+                >
+                  {!selectedAttributes.unlocked ? (
+                    <div style={{ fontSize: '0.76rem', color: 'var(--ink-muted)', fontWeight: 600 }}>
+                      {lang === 'ja'
+                        ? `プレイスタイル解放条件: ${detail.games_played}/${MIN_MATCHES_FOR_RATING}試合 (レーティング解放) · ${selectedSkill.ralliesPlayed}/${MIN_RALLIES_FOR_ATTRIBUTES}ラリー`
+                        : `Unlock playstyle attributes at ${MIN_MATCHES_FOR_RATING} rated games (${detail.games_played}/${MIN_MATCHES_FOR_RATING}) & ${MIN_RALLIES_FOR_ATTRIBUTES} rallies (${selectedSkill.ralliesPlayed}/${MIN_RALLIES_FOR_ATTRIBUTES})`}
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--ink-muted)' }}>
+                          {lang === 'ja' ? 'プレイスタイル:' : 'Playstyle:'}
+                        </span>
+                        {selectedAttributes.badges.length === 0 ? (
+                          <span className="tag">
+                            {lang === 'ja' ? 'オールラウンダー' : 'All-Rounder'}
+                          </span>
+                        ) : (
+                          selectedAttributes.badges.map((b) => (
+                            <span key={b.id} className="tag tag-live">
+                              {lang === 'ja' ? b.ja : b.en}
+                            </span>
+                          ))
+                        )}
+                        {selectedAttributes.missTendency === 'net' && (
+                          <span className="tag tag-peach">
+                            {lang === 'ja' ? '傾向: ネットミス多め' : 'Tendency: Net misses'}
+                          </span>
+                        )}
+                        {selectedAttributes.missTendency === 'out' && (
+                          <span className="tag tag-peach">
+                            {lang === 'ja' ? '傾向: アウト多め' : 'Tendency: Long / Out misses'}
+                          </span>
+                        )}
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                          gap: 8,
+                        }}
+                      >
+                        {(
+                          [
+                            {
+                              key: 'serve',
+                              label: lang === 'ja' ? 'サーブ' : 'Serve',
+                              val: selectedAttributes.axes.serve,
+                              color: 'var(--team-a)',
+                            },
+                            {
+                              key: 'receive',
+                              label: lang === 'ja' ? 'レシーブ' : 'Return',
+                              val: selectedAttributes.axes.receive,
+                              color: 'var(--accent)',
+                            },
+                            {
+                              key: 'clutch',
+                              label: lang === 'ja' ? 'クラッチ' : 'Clutch',
+                              val: selectedAttributes.axes.clutch,
+                              color: 'var(--team-b)',
+                            },
+                            {
+                              key: 'consistency',
+                              label: lang === 'ja' ? '安定性' : 'Consistency',
+                              val: selectedAttributes.axes.consistency,
+                              color: 'var(--brand-emerald)',
+                            },
+                          ] as const
+                        ).map((axis) => (
+                          <div key={axis.key} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            <div
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                              }}
+                            >
+                              <span style={{ color: 'var(--ink-secondary)' }}>{axis.label}</span>
+                              <span style={{ color: 'var(--ink-primary)' }}>
+                                {axis.val !== null ? axis.val : '—'}
+                              </span>
+                            </div>
+                            <div
+                              style={{
+                                height: 5,
+                                borderRadius: 999,
+                                background: 'rgba(148, 163, 184, 0.2)',
+                                overflow: 'hidden',
+                              }}
+                            >
+                              {axis.val !== null && (
+                                <div
+                                  style={{
+                                    width: `${axis.val}%`,
+                                    height: '100%',
+                                    background: axis.color,
+                                  }}
+                                />
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {selectedSplits &&
+            (selectedSplits.indoor.wins + selectedSplits.indoor.losses > 0 ||
+              selectedSplits.outdoor.wins + selectedSplits.outdoor.losses > 0 ||
+              selectedSplits.earlyRounds.wins + selectedSplits.earlyRounds.losses > 0 ||
+              selectedSplits.lateRounds.wins + selectedSplits.lateRounds.losses > 0 ||
+              selectedSplits.underdog.wins + selectedSplits.underdog.losses > 0) && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                  padding: '12px 14px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--bg-subtle)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div className="section-heading" style={{ margin: 0 }}>
+                    {lang === 'ja' ? '環境・状況別成績' : 'Situational & Environment Splits'}
+                  </div>
+                  {selectedSplits.isGiantKiller && (
+                    <span className="tag tag-live">
+                      {lang === 'ja' ? 'ジャイアントキラー' : 'Giant-Killer'}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {selectedSplits.indoor.wins + selectedSplits.indoor.losses > 0 && (
+                    <span className="tag">
+                      {lang === 'ja' ? '屋内' : 'Indoor'}: {selectedSplits.indoor.wins}-
+                      {selectedSplits.indoor.losses} ({selectedSplits.indoor.winPct}%)
+                    </span>
+                  )}
+                  {selectedSplits.outdoor.wins + selectedSplits.outdoor.losses > 0 && (
+                    <span className="tag">
+                      {lang === 'ja' ? '屋外' : 'Outdoor'}: {selectedSplits.outdoor.wins}-
+                      {selectedSplits.outdoor.losses} ({selectedSplits.outdoor.winPct}%)
+                    </span>
+                  )}
+                  {selectedSplits.earlyRounds.wins + selectedSplits.earlyRounds.losses > 0 &&
+                    selectedSplits.lateRounds.wins + selectedSplits.lateRounds.losses > 0 && (
+                      <span className="tag">
+                        {lang === 'ja' ? '体力(序盤/終盤)' : 'Stamina (R1-2 / R4+)'}:{' '}
+                        {selectedSplits.earlyRounds.winPct}% / {selectedSplits.lateRounds.winPct}%
+                      </span>
+                    )}
+                  {selectedSplits.sideOut.wins + selectedSplits.sideOut.losses > 0 &&
+                    selectedSplits.rallyMode.wins + selectedSplits.rallyMode.losses > 0 && (
+                      <span className="tag">
+                        {lang === 'ja' ? 'サイドアウト/ラリー' : 'Side-Out / Rally'}:{' '}
+                        {selectedSplits.sideOut.winPct}% / {selectedSplits.rallyMode.winPct}%
+                      </span>
+                    )}
+                  {selectedSplits.underdog.wins + selectedSplits.underdog.losses > 0 && (
+                    <span className="tag tag-peach">
+                      {lang === 'ja' ? '格上相手' : 'vs Higher-Rated'}:{' '}
+                      {selectedSplits.underdog.wins}-{selectedSplits.underdog.losses} (
+                      {selectedSplits.underdog.winPct}%)
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
           <div className="grid-2">
             <div>
               <div
@@ -344,14 +655,28 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {detail.teammates.map((tm) => (
-                    <div key={tm.other_player_id} className="rally-row">
-                      <span style={{ fontWeight: 700 }}>{tm.other_name}</span>
-                      <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
-                        {tm.wins}-{tm.losses} ({tm.win_pct}%)
-                      </span>
-                    </div>
-                  ))}
+                  {detail.teammates.map((tm) => {
+                    const synergy = selectedSplits?.partnerSynergy.get(tm.other_player_id);
+                    return (
+                      <div key={tm.other_player_id} className="rally-row">
+                        <span style={{ fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          {tm.other_name}
+                          {synergy !== undefined && Math.abs(synergy) >= 5 && (
+                            <span
+                              className={`tag ${synergy > 0 ? 'tag-lime' : ''}`}
+                              style={{ fontSize: '0.68rem', padding: '1px 6px' }}
+                            >
+                              {synergy > 0 ? `+${synergy}%` : `${synergy}%`}{' '}
+                              {lang === 'ja' ? '相性' : 'synergy'}
+                            </span>
+                          )}
+                        </span>
+                        <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+                          {tm.wins}-{tm.losses} ({tm.win_pct}%)
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -443,7 +768,7 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
             </div>
 
             <div className="field-group">
-              <span className="field-label">Badge Color</span>
+              <span className="field-label">{lang === 'ja' ? 'バッジカラー' : 'Badge Color'}</span>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {SWATCHES.map((c) => (
                   <button

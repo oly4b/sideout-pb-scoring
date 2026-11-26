@@ -37,10 +37,15 @@ function getKFactor(gamesPlayed: number): number {
   return 0.12;
 }
 
+/** Formats a numeric skill rating to two decimal places, or `'NR'` when unrated. */
 export function formatRating(rating: number | null | undefined): string {
   return typeof rating === 'number' && Number.isFinite(rating) ? rating.toFixed(2) : 'NR';
 }
 
+/**
+ * Computes DUPR-style dynamic skill ratings across completed matches in chronological order.
+ * Blends 55% match outcome and 45% point share, unlocking public ratings after `MIN_MATCHES_FOR_RATING` games.
+ */
 export function computeDuprRatings(
   players: Player[],
   matches: Match[]

@@ -22,6 +22,7 @@ import type {
 export class SupabaseAdapter implements DataRepository {
   private client: SupabaseClient;
   private url: string;
+  private matchUpdateLocks = new Map<string, Promise<unknown>>();
 
   constructor(url: string, key: string) {
     this.url = url;
@@ -380,6 +381,19 @@ export class SupabaseAdapter implements DataRepository {
   }
 
   async updateMatch(id: string, patch: UpdateMatchPatch): Promise<Match | null> {
+    const prev = this.matchUpdateLocks.get(id) ?? Promise.resolve();
+    const next = prev.catch(() => undefined).then(() => this.performUpdateMatch(id, patch));
+    this.matchUpdateLocks.set(id, next);
+    try {
+      return await next;
+    } finally {
+      if (this.matchUpdateLocks.get(id) === next) {
+        this.matchUpdateLocks.delete(id);
+      }
+    }
+  }
+
+  private async performUpdateMatch(id: string, patch: UpdateMatchPatch): Promise<Match | null> {
     const { rallies, ...matchFields } = patch;
     if (Object.keys(matchFields).length > 0) {
       const { error } = await this.client.from('matches').update(matchFields).eq('id', id);
@@ -387,23 +401,37 @@ export class SupabaseAdapter implements DataRepository {
     }
 
     if (rallies) {
-      await this.client.from('rally_events').delete().eq('match_id', id);
-      if (rallies.length > 0) {
-        const { error: rErr } = await this.client.from('rally_events').insert(
-          rallies.map((r) => ({
-            match_id: id,
-            seq: r.seq,
-            rally_winner: r.rally_winner,
-            event_type: r.event_type,
-            serving_team: r.serving_team,
-            server_number: r.server_number,
-            team_a_score: r.team_a_score,
-            team_b_score: r.team_b_score,
-            callout: r.callout,
-            created_at: r.created_at,
-          }))
-        );
+      if (rallies.length === 0) {
+        const { error: delErr } = await this.client
+          .from('rally_events')
+          .delete()
+          .eq('match_id', id);
+        if (delErr) throw new Error(delErr.message);
+      } else {
+        const rows = rallies.map((r) => ({
+          match_id: id,
+          seq: r.seq,
+          rally_winner: r.rally_winner,
+          event_type: r.event_type,
+          serving_team: r.serving_team,
+          server_number: r.server_number,
+          team_a_score: r.team_a_score,
+          team_b_score: r.team_b_score,
+          callout: r.callout,
+          created_at: r.created_at,
+        }));
+        const { error: rErr } = await this.client
+          .from('rally_events')
+          .upsert(rows, { onConflict: 'match_id,seq' });
         if (rErr) throw new Error(rErr.message);
+
+        const maxSeq = rallies.reduce((max, r) => Math.max(max, r.seq), 0);
+        const { error: pruneErr } = await this.client
+          .from('rally_events')
+          .delete()
+          .eq('match_id', id)
+          .gt('seq', maxSeq);
+        if (pruneErr) throw new Error(pruneErr.message);
       }
     }
 

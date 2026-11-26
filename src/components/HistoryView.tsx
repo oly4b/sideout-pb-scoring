@@ -8,9 +8,16 @@ import {
   X,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import {
+  getMatchRalliesWithTags,
+  getOutcomeTagLabel,
+  isUpsetMatch,
+} from '../../shared/pickleballEngine';
+import { computeDuprRatings } from '../../shared/ratingEngine';
 import type { Match, Player, Session } from '../../shared/types';
 import { api } from '../lib/api';
 import { copy, type Lang } from '../lib/i18n';
+import { MatchAnalyticsPanel } from './MatchAnalyticsPanel';
 
 interface HistoryViewProps {
   lang: Lang;
@@ -129,6 +136,7 @@ function ScoreProgressionChart({ match, lang }: { match: Match; lang: Lang }) {
   );
 }
 
+/** Searchable match history list with upset badges, score progression charts, analytics, and rally logs. */
 export function HistoryView({
   lang,
   matches,
@@ -147,6 +155,8 @@ export function HistoryView({
   const [deleteTarget, setDeleteTarget] = useState<Match | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
+
+  const ratingMap = useMemo(() => computeDuprRatings(players, matches).ratings, [players, matches]);
 
   const filtered = useMemo(() => {
     return matches.filter((m) => {
@@ -276,7 +286,9 @@ export function HistoryView({
       {filtered.length === 0 ? (
         <div className="card empty-state">
           <Activity size={34} strokeWidth={1.6} />
-          <div style={{ fontWeight: 800, color: 'var(--ink-primary)' }}>No matching games</div>
+          <div style={{ fontWeight: 800, color: 'var(--ink-primary)' }}>
+            {lang === 'ja' ? '一致する試合がありません' : 'No matching games'}
+          </div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -308,6 +320,11 @@ export function HistoryView({
                           ? t.live
                           : 'Ready'}
                     </span>
+                    {isUpsetMatch(m, ratingMap) && (
+                      <span className="tag tag-peach">
+                        {lang === 'ja' ? '番狂わせ' : 'Upset'}
+                      </span>
+                    )}
                     {session && (
                       <span style={{ fontWeight: 700, color: 'var(--ink-secondary)' }}>
                         {session.title} · R{m.round_number} C{m.court_number}
@@ -430,6 +447,8 @@ export function HistoryView({
               <ScoreProgressionChart match={inspectMatch} lang={lang} />
             </div>
 
+            <MatchAnalyticsPanel match={inspectMatch} lang={lang} />
+
             {inspectMatch.rallies.length > 0 && (
               <div>
                 <div className="section-heading">
@@ -438,7 +457,7 @@ export function HistoryView({
                     : `Rally Log (${inspectMatch.rallies.length} rallies)`}
                 </div>
                 <div className="rally-timeline">
-                  {inspectMatch.rallies.map((r) => (
+                  {getMatchRalliesWithTags(inspectMatch).map((r) => (
                     <div key={r.id} className="rally-row">
                       <span style={{ color: 'var(--ink-muted)', fontWeight: 700, minWidth: 28 }}>
                         #{r.seq}
@@ -460,6 +479,11 @@ export function HistoryView({
                                 : 'Side Out'}
                           )
                         </span>
+                        {r.outcome_tag && (
+                          <span className="tag" style={{ marginLeft: 6, fontSize: '0.68rem', padding: '1px 6px' }}>
+                            {getOutcomeTagLabel(r.outcome_tag, lang)}
+                          </span>
+                        )}
                       </span>
                       <span className="rally-callout-mono">{r.callout}</span>
                     </div>

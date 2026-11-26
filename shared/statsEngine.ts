@@ -1,6 +1,7 @@
 import { computeDuprRatings } from './ratingEngine';
 import type { Match, PairRecord, Player, PlayerDetailStats, PlayerStanding } from './types';
 
+/** Computes overall leaderboard standings (W-L, win %, PF, PA, point diff, streak, and rating) across completed matches. */
 export function computeStandings(players: Player[], matches: Match[]): PlayerStanding[] {
   const { ratings } = computeDuprRatings(players, matches);
   const completed = matches
@@ -63,6 +64,7 @@ export function computeStandings(players: Player[], matches: Match[]): PlayerSta
   });
 }
 
+/** Computes detailed head-to-head opponent records, doubles partner records, and recent matches for a player. */
 export function computePlayerDetailStats(
   playerId: string,
   players: Player[],

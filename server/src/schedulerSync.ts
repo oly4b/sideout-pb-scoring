@@ -36,6 +36,7 @@ function getSchedulerClient(): SupabaseClient | null {
   return schedulerClient;
 }
 
+/** Returns today's `YYYY-MM-DD` date key in `Asia/Tokyo` timezone. */
 export function getTodayJstDateKey(): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Tokyo',
@@ -45,6 +46,7 @@ export function getTodayJstDateKey(): string {
   }).format(new Date());
 }
 
+/** Fetches upcoming booked sessions, attendees, and poll players from the shared session-scheduler Supabase project. */
 export async function fetchSchedulerUpcoming(
   minDateInput?: string
 ): Promise<SchedulerUpcomingPayload> {

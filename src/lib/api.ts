@@ -40,6 +40,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Typed REST client for all Sideout Pickleball backend endpoints. */
 export const api = {
   getDbStatus: () => request<DatabaseStatus>('/db/status'),
   getDbSchema: () => request<{ sql: string }>('/db/schema'),

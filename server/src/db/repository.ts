@@ -84,6 +84,7 @@ export interface MatchFilter {
   playerId?: string;
 }
 
+/** Persistence contract implemented by `SupabaseAdapter`, `PostgresAdapter`, and `LocalJsonAdapter`. */
 export interface DataRepository {
   getStatus(): Promise<DatabaseStatus>;
   listPlayers(): Promise<Player[]>;

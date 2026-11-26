@@ -17,6 +17,7 @@ app.use(express.json({ limit: '5mb' }));
 
 const repo = getRepository();
 
+/** Returns a player's court nickname or first name, falling back when player metadata is missing. */
 function firstName(player: Player | undefined, fallback: string): string {
   if (!player) return fallback;
   return player.nickname?.trim() || player.name.split(' ')[0];
@@ -75,6 +76,7 @@ app.get('/api/export-project', (_req, res) => {
 
 const SEED_COLORS = ['#1D4ED8', '#15803D', '#E25747', '#B45309', '#0E7490', '#BE185D', '#3F6212'];
 
+/** Recomputes DUPR-style ratings across all completed matches and persists any changed player ratings. */
 async function syncPlayerRatings(existingPlayers?: Player[]): Promise<Player[]> {
   const [players, matches] = await Promise.all([
     existingPlayers ? Promise.resolve(existingPlayers) : repo.listPlayers(),
@@ -204,6 +206,57 @@ app.get('/api/sessions/:id', async (req, res) => {
   }
 });
 
+/** Persists scheduled doubles matches and initial `LiveGameState` records for a generated session round. */
+async function createMatchesForProposal(params: {
+  session: Awaited<ReturnType<typeof repo.createSession>>;
+  roundNumber: number;
+  proposalMatches: ReturnType<typeof generateNextRound>['matches'];
+  playerMap: Map<string, Player>;
+}): Promise<Match[]> {
+  const { session, roundNumber, proposalMatches, playerMap } = params;
+  const createdMatches: Match[] = [];
+
+  for (const pm of proposalMatches) {
+    const a1 = playerMap.get(pm.teamA[0]);
+    const a2 = playerMap.get(pm.teamA[1]);
+    const b1 = playerMap.get(pm.teamB[0]);
+    const b2 = playerMap.get(pm.teamB[1]);
+
+    const liveState = createInitialLiveState({
+      gameType: 'doubles',
+      scoringMode: session.scoring_mode,
+      targetScore: session.target_score,
+      winByTwo: session.win_by_two,
+      initialServingTeam: 'A',
+      teamAPlayers: pm.teamA,
+      teamBPlayers: pm.teamB,
+    });
+
+    const match = await repo.createMatch({
+      session_id: session.id,
+      round_number: roundNumber,
+      court_number: pm.court_number,
+      game_type: 'doubles',
+      scoring_mode: session.scoring_mode,
+      target_score: session.target_score,
+      win_by_two: session.win_by_two,
+      status: 'scheduled',
+      team_a_name: `${firstName(a1, 'P1')} & ${firstName(a2, 'P2')}`,
+      team_b_name: `${firstName(b1, 'P3')} & ${firstName(b2, 'P4')}`,
+      participants: [
+        { player_id: pm.teamA[0], team: 'A', starting_side: 'right' },
+        { player_id: pm.teamA[1], team: 'A', starting_side: 'left' },
+        { player_id: pm.teamB[0], team: 'B', starting_side: 'right' },
+        { player_id: pm.teamB[1], team: 'B', starting_side: 'left' },
+      ],
+      live_state: liveState,
+    });
+    createdMatches.push(match);
+  }
+
+  return createdMatches;
+}
+
 app.post('/api/sessions', async (req, res) => {
   try {
     const body = req.body ?? {};
@@ -234,44 +287,12 @@ app.post('/api/sessions', async (req, res) => {
       nextRoundNumber: 1,
     });
 
-    const createdMatches: Match[] = [];
-    for (const pm of proposal.matches) {
-      const a1 = playerMap.get(pm.teamA[0]);
-      const a2 = playerMap.get(pm.teamA[1]);
-      const b1 = playerMap.get(pm.teamB[0]);
-      const b2 = playerMap.get(pm.teamB[1]);
-
-      const liveState = createInitialLiveState({
-        gameType: 'doubles',
-        scoringMode: session.scoring_mode,
-        targetScore: session.target_score,
-        winByTwo: session.win_by_two,
-        initialServingTeam: 'A',
-        teamAPlayers: pm.teamA,
-        teamBPlayers: pm.teamB,
-      });
-
-      const match = await repo.createMatch({
-        session_id: session.id,
-        round_number: 1,
-        court_number: pm.court_number,
-        game_type: 'doubles',
-        scoring_mode: session.scoring_mode,
-        target_score: session.target_score,
-        win_by_two: session.win_by_two,
-        status: 'scheduled',
-        team_a_name: `${firstName(a1, 'P1')} & ${firstName(a2, 'P2')}`,
-        team_b_name: `${firstName(b1, 'P3')} & ${firstName(b2, 'P4')}`,
-        participants: [
-          { player_id: pm.teamA[0], team: 'A', starting_side: 'right' },
-          { player_id: pm.teamA[1], team: 'A', starting_side: 'left' },
-          { player_id: pm.teamB[0], team: 'B', starting_side: 'right' },
-          { player_id: pm.teamB[1], team: 'B', starting_side: 'left' },
-        ],
-        live_state: liveState,
-      });
-      createdMatches.push(match);
-    }
+    const createdMatches = await createMatchesForProposal({
+      session,
+      roundNumber: 1,
+      proposalMatches: proposal.matches,
+      playerMap,
+    });
 
     res.status(201).json({ ...session, matches: createdMatches });
   } catch (err) {
@@ -299,44 +320,12 @@ app.post('/api/sessions/:id/next-round', async (req, res) => {
       nextRoundNumber,
     });
 
-    const createdMatches: Match[] = [];
-    for (const pm of proposal.matches) {
-      const a1 = playerMap.get(pm.teamA[0]);
-      const a2 = playerMap.get(pm.teamA[1]);
-      const b1 = playerMap.get(pm.teamB[0]);
-      const b2 = playerMap.get(pm.teamB[1]);
-
-      const liveState = createInitialLiveState({
-        gameType: 'doubles',
-        scoringMode: session.scoring_mode,
-        targetScore: session.target_score,
-        winByTwo: session.win_by_two,
-        initialServingTeam: 'A',
-        teamAPlayers: pm.teamA,
-        teamBPlayers: pm.teamB,
-      });
-
-      const match = await repo.createMatch({
-        session_id: session.id,
-        round_number: nextRoundNumber,
-        court_number: pm.court_number,
-        game_type: 'doubles',
-        scoring_mode: session.scoring_mode,
-        target_score: session.target_score,
-        win_by_two: session.win_by_two,
-        status: 'scheduled',
-        team_a_name: `${firstName(a1, 'P1')} & ${firstName(a2, 'P2')}`,
-        team_b_name: `${firstName(b1, 'P3')} & ${firstName(b2, 'P4')}`,
-        participants: [
-          { player_id: pm.teamA[0], team: 'A', starting_side: 'right' },
-          { player_id: pm.teamA[1], team: 'A', starting_side: 'left' },
-          { player_id: pm.teamB[0], team: 'B', starting_side: 'right' },
-          { player_id: pm.teamB[1], team: 'B', starting_side: 'left' },
-        ],
-        live_state: liveState,
-      });
-      createdMatches.push(match);
-    }
+    const createdMatches = await createMatchesForProposal({
+      session,
+      roundNumber: nextRoundNumber,
+      proposalMatches: proposal.matches,
+      playerMap,
+    });
 
     const updated = await repo.updateSession(session.id, { current_round: nextRoundNumber });
     res.json({ session: updated, new_matches: createdMatches, sitting_out: proposal.sitting_out });

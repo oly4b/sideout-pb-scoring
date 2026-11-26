@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { computeSessionHighlights } from '../../shared/pickleballEngine';
 import { computeStandings } from '../../shared/statsEngine';
 import { VENUES } from '../../shared/venues';
 import type {
@@ -90,6 +91,7 @@ function getSafeMapUrl(mapUrl: string | undefined, venueName: string): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueName)}`;
 }
 
+/** Session & rotation manager supporting scheduler sync, round generation, quick-score entry, and standings. */
 export function SessionsView({
   lang,
   sessions,
@@ -369,7 +371,7 @@ export function SessionsView({
     }
   };
 
-  const sessionMatches = activeSession?.matches ?? [];
+  const sessionMatches = useMemo(() => activeSession?.matches ?? [], [activeSession?.matches]);
   const roundNumbers = useMemo(() => {
     const set = new Set<number>();
     for (const m of sessionMatches) {
@@ -566,7 +568,7 @@ export function SessionsView({
         <div className="card empty-state">
           <Users size={36} strokeWidth={1.6} />
           <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--ink-primary)' }}>
-            No sessions yet
+            {lang === 'ja' ? 'まだセッションがありません' : 'No sessions yet'}
           </div>
           <button type="button" className="btn btn-primary" onClick={openCreateModal}>
             <Plus size={16} /> {t.newSession}
@@ -794,6 +796,49 @@ export function SessionsView({
             ))}
           </div>
 
+          {(() => {
+            const highlights = computeSessionHighlights(activeSession, sessionMatches, players);
+            if (!highlights.bestPair && !highlights.closestMatch && highlights.outdoorErrorSharePct === null) {
+              return null;
+            }
+            return (
+              <div
+                className="card"
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 8,
+                  alignItems: 'center',
+                  padding: '10px 14px',
+                }}
+              >
+                <span className="section-heading" style={{ margin: 0, marginRight: 4 }}>
+                  {lang === 'ja' ? 'セッションハイライト' : 'Session Highlights'}
+                </span>
+                {highlights.bestPair && (
+                  <span className="tag tag-lime">
+                    {lang === 'ja' ? 'ベストペア' : 'Best Pair'}: {highlights.bestPair.names} (
+                    {highlights.bestPair.wins}-{highlights.bestPair.losses})
+                  </span>
+                )}
+                {highlights.closestMatch && (
+                  <span className="tag">
+                    {lang === 'ja' ? 'ベスト接戦' : 'Closest Match'}:{' '}
+                    {highlights.closestMatch.teamAName} {highlights.closestMatch.scoreA}-
+                    {highlights.closestMatch.scoreB} {highlights.closestMatch.teamBName}
+                  </span>
+                )}
+                {highlights.outdoorErrorSharePct !== null && (
+                  <span className="tag tag-peach">
+                    {lang === 'ja'
+                      ? `屋外アウト/サーブミス率: ${highlights.outdoorErrorSharePct}%`
+                      : `Outdoor Out/Fault rate: ${highlights.outdoorErrorSharePct}%`}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Live Session Standings */}
           <section className="section-card">
             <div className="section-card-header secondary">
@@ -810,11 +855,11 @@ export function SessionsView({
                 <thead>
                   <tr>
                     <th>#</th>
-                    <th>Player</th>
-                    <th className="num">W-L</th>
-                    <th className="num">Win %</th>
-                    <th className="num">PF</th>
-                    <th className="num">PA</th>
+                    <th>{lang === 'ja' ? 'プレイヤー' : 'Player'}</th>
+                    <th className="num">{lang === 'ja' ? '勝-敗' : 'W-L'}</th>
+                    <th className="num">{lang === 'ja' ? '勝率' : 'Win %'}</th>
+                    <th className="num">{lang === 'ja' ? '得点' : 'PF'}</th>
+                    <th className="num">{lang === 'ja' ? '失点' : 'PA'}</th>
                     <th className="num">+/-</th>
                   </tr>
                 </thead>
@@ -1140,7 +1185,7 @@ export function SessionsView({
                     }}
                   />
                   {lang === 'ja'
-                    ? `折り返しでエンド交代 (${Math.ceil(targetScore / 2)})`
+                    ? `エンド交代 (${Math.ceil(targetScore / 2)})`
                     : `Switch ends (${Math.ceil(targetScore / 2)})`}
                 </button>
               </div>

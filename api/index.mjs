@@ -5,147 +5,6 @@ import path3 from "node:path";
 import cors from "cors";
 import express from "express";
 
-// shared/pickleballEngine.ts
-function createInitialLiveState(opts) {
-  const servingTeam = opts.initialServingTeam ?? "A";
-  const serverNumber = opts.gameType === "doubles" && opts.scoringMode === "side_out" ? 2 : 1;
-  return {
-    gameType: opts.gameType,
-    scoringMode: opts.scoringMode,
-    targetScore: opts.targetScore,
-    winByTwo: opts.winByTwo,
-    teamAScore: 0,
-    teamBScore: 0,
-    servingTeam,
-    serverNumber,
-    positions: {
-      teamA: {
-        right: opts.teamAPlayers[0] ?? null,
-        left: opts.gameType === "doubles" ? opts.teamAPlayers[1] ?? null : null
-      },
-      teamB: {
-        right: opts.teamBPlayers[0] ?? null,
-        left: opts.gameType === "doubles" ? opts.teamBPlayers[1] ?? null : null
-      }
-    },
-    winnerTeam: null,
-    isFirstServeOfGame: true,
-    rallies: [],
-    redoStack: []
-  };
-}
-function formatScoreCallout(state) {
-  const servingScore = state.servingTeam === "A" ? state.teamAScore : state.teamBScore;
-  const receivingScore = state.servingTeam === "A" ? state.teamBScore : state.teamAScore;
-  if (state.gameType === "doubles" && state.scoringMode === "side_out") {
-    return `${servingScore} - ${receivingScore} - ${state.serverNumber}`;
-  }
-  return `${servingScore} - ${receivingScore}`;
-}
-function checkWinner(teamAScore, teamBScore, targetScore, winByTwo) {
-  const minMargin = winByTwo ? 2 : 1;
-  if (teamAScore >= targetScore && teamAScore - teamBScore >= minMargin) {
-    return "A";
-  }
-  if (teamBScore >= targetScore && teamBScore - teamAScore >= minMargin) {
-    return "B";
-  }
-  return null;
-}
-function swapTeamPositions(pos) {
-  return { right: pos.left, left: pos.right };
-}
-function recordRally(state, rallyWinner, matchId) {
-  if (state.winnerTeam) {
-    return state;
-  }
-  let teamAScore = state.teamAScore;
-  let teamBScore = state.teamBScore;
-  let servingTeam = state.servingTeam;
-  let serverNumber = state.serverNumber;
-  let positions = {
-    teamA: { ...state.positions.teamA },
-    teamB: { ...state.positions.teamB }
-  };
-  let eventType = "point";
-  if (state.scoringMode === "side_out") {
-    if (rallyWinner === state.servingTeam) {
-      if (rallyWinner === "A") {
-        teamAScore += 1;
-        if (state.gameType === "doubles") {
-          positions.teamA = swapTeamPositions(positions.teamA);
-        }
-      } else {
-        teamBScore += 1;
-        if (state.gameType === "doubles") {
-          positions.teamB = swapTeamPositions(positions.teamB);
-        }
-      }
-      eventType = "point";
-    } else {
-      if (state.gameType === "doubles" && state.serverNumber === 1) {
-        serverNumber = 2;
-        eventType = "server_change";
-      } else {
-        servingTeam = state.servingTeam === "A" ? "B" : "A";
-        serverNumber = 1;
-        eventType = "side_out";
-      }
-    }
-  } else {
-    if (rallyWinner === "A") {
-      teamAScore += 1;
-    } else {
-      teamBScore += 1;
-    }
-    if (rallyWinner === state.servingTeam) {
-      if (state.gameType === "doubles") {
-        if (rallyWinner === "A") {
-          positions.teamA = swapTeamPositions(positions.teamA);
-        } else {
-          positions.teamB = swapTeamPositions(positions.teamB);
-        }
-      }
-      eventType = "point";
-    } else {
-      servingTeam = rallyWinner;
-      serverNumber = 1;
-      eventType = "side_out";
-    }
-  }
-  const winnerTeam = checkWinner(teamAScore, teamBScore, state.targetScore, state.winByTwo);
-  const nextStateBase = {
-    ...state,
-    teamAScore,
-    teamBScore,
-    servingTeam,
-    serverNumber,
-    positions,
-    winnerTeam,
-    isFirstServeOfGame: false,
-    rallies: state.rallies,
-    redoStack: []
-  };
-  const callout = formatScoreCallout(nextStateBase);
-  const rallyEvent = {
-    id: crypto.randomUUID ? crypto.randomUUID() : `rally_${Date.now()}_${state.rallies.length + 1}`,
-    match_id: matchId,
-    seq: state.rallies.length + 1,
-    rally_winner: rallyWinner,
-    event_type: eventType,
-    serving_team: servingTeam,
-    server_number: serverNumber,
-    team_a_score: teamAScore,
-    team_b_score: teamBScore,
-    callout,
-    created_at: (/* @__PURE__ */ new Date()).toISOString()
-  };
-  return {
-    ...nextStateBase,
-    rallies: [...state.rallies, rallyEvent]
-  };
-}
-
 // shared/ratingEngine.ts
 var BASELINE_RATING = 3;
 var SCALE_FACTOR = 0.85;
@@ -239,6 +98,294 @@ function computeDuprRatings(players, matches) {
     });
   }
   return { ratings, matchDeltas };
+}
+
+// shared/venues.ts
+var VENUES = [
+  {
+    id: "fukuda",
+    shortName: "\u798F\u7530\u516C\u5712",
+    fullName: "\u30B7\u30DE\u30C0\u307F\u3089\u3044\u30A2\u30EA\u30FC\u30CA\u6C34\u5CF6\uFF08\u798F\u7530\u516C\u5712\uFF09",
+    courtType: "indoor"
+  },
+  {
+    id: "mizushima",
+    shortName: "\u6C34\u5CF6\u4F53\u80B2\u9928",
+    fullName: "\u6C34\u5CF6\u4F53\u80B2\u9928",
+    courtType: "indoor"
+  },
+  {
+    id: "kurashiki_gym",
+    shortName: "\u5009\u6577\u4F53\u80B2\u9928",
+    fullName: "\u5009\u6577\u4F53\u80B2\u9928",
+    courtType: "indoor"
+  },
+  {
+    id: "kurashiki_weightlifting",
+    shortName: "\u5009\u6577\u904B\u52D5\u516C\u5712WL\u5834",
+    fullName: "\u5009\u6577\u904B\u52D5\u516C\u5712 \u30A6\u30A8\u30A4\u30C8\u30EA\u30D5\u30C6\u30A3\u30F3\u30B0\u5834",
+    courtType: "indoor"
+  },
+  {
+    id: "mizushima_fureai",
+    shortName: "\u6C34\u5CF6\u3075\u308C\u3042\u3044\u30BB\u30F3\u30BF\u30FC",
+    fullName: "\u6C34\u5CF6\u3075\u308C\u3042\u3044\u30BB\u30F3\u30BF\u30FC \u4F53\u80B2\u9928",
+    courtType: "indoor"
+  },
+  {
+    id: "mabi",
+    shortName: "\u771F\u5099\u7DCF\u5408\u516C\u5712",
+    fullName: "\u771F\u5099\u7DCF\u5408\u516C\u5712 \u4F53\u80B2\u9928",
+    courtType: "indoor"
+  },
+  {
+    id: "tamashima",
+    shortName: "\u7389\u5CF6\u306E\u68EE",
+    fullName: "\u7389\u5CF6\u306E\u68EE \u4F53\u80B2\u9928",
+    courtType: "indoor"
+  },
+  {
+    id: "nakayama",
+    shortName: "\u4E2D\u5C71\u516C\u5712",
+    fullName: "\u4E2D\u5C71\u516C\u5712 \u4F53\u80B2\u9928",
+    courtType: "indoor"
+  },
+  {
+    id: "nadasaki",
+    shortName: "\u7058\u5D0E\u4F53\u80B2\u30BB\u30F3\u30BF\u30FC",
+    fullName: "\u7058\u5D0E\u4F53\u80B2\u30BB\u30F3\u30BF\u30FC",
+    courtType: "indoor"
+  },
+  {
+    id: "futsukaichi",
+    shortName: "\u4E8C\u65E5\u5E02\u516C\u5712\u30C6\u30CB\u30B9",
+    fullName: "\u4E8C\u65E5\u5E02\u516C\u5712\u30C6\u30CB\u30B9\u30B3\u30FC\u30C8\uFF08\u7167\u660E\u3042\u308A\uFF09",
+    courtType: "outdoor"
+  },
+  {
+    id: "yoshiigawa_1",
+    shortName: "\u5409\u4E95\u5DDD\u7B2C1\u7DD1\u5730",
+    fullName: "\u5409\u4E95\u5DDD\u7B2C1\u7DD1\u5730 \u30C6\u30CB\u30B9\u30B3\u30FC\u30C8\uFF08\u301C17:00\uFF09",
+    courtType: "outdoor"
+  },
+  {
+    id: "hyakkengawa_a",
+    shortName: "\u767E\u9593\u5DDD\u7DD1\u5730(A\u30FB\u6771\u5DDD\u539F)",
+    fullName: "\u767E\u9593\u5DDD\u7DD1\u5730 \u30C6\u30CB\u30B9\u30B3\u30FC\u30C8A\uFF08\u6771\u5DDD\u539F\u30FB\u30CF\u30FC\u30C9\u30B3\u30FC\u30C8\u30FB\u301C17:00\uFF09",
+    courtType: "outdoor"
+  },
+  {
+    id: "hyakkengawa_c",
+    shortName: "\u767E\u9593\u5DDD\u7DD1\u5730(C\u30FB\u795E\u4E0B)",
+    fullName: "\u767E\u9593\u5DDD\u7DD1\u5730 \u30C6\u30CB\u30B9\u30B3\u30FC\u30C8C\uFF08\u795E\u4E0B\u30FB\u30CF\u30FC\u30C9\u30B3\u30FC\u30C8\u30FB\u301C17:00\uFF09",
+    courtType: "outdoor"
+  }
+];
+var VENUE_MAP = new Map(VENUES.map((v) => [v.id, v]));
+function resolveVenue(venueId, manualVenueName, fallbackCourtType = "indoor") {
+  if (venueId && venueId !== "other") {
+    const found = VENUE_MAP.get(venueId);
+    if (found) return found;
+  }
+  const cleanName = manualVenueName?.trim() || venueId || "Custom Venue";
+  return {
+    id: venueId || "other",
+    shortName: cleanName,
+    fullName: cleanName,
+    courtType: fallbackCourtType
+  };
+}
+
+// shared/pickleballEngine.ts
+function createInitialLiveState(opts) {
+  const servingTeam = opts.initialServingTeam ?? "A";
+  const serverNumber = opts.gameType === "doubles" && opts.scoringMode === "side_out" ? 2 : 1;
+  return {
+    gameType: opts.gameType,
+    scoringMode: opts.scoringMode,
+    targetScore: opts.targetScore,
+    winByTwo: opts.winByTwo,
+    teamAScore: 0,
+    teamBScore: 0,
+    servingTeam,
+    serverNumber,
+    positions: {
+      teamA: {
+        right: opts.teamAPlayers[0] ?? null,
+        left: opts.gameType === "doubles" ? opts.teamAPlayers[1] ?? null : null
+      },
+      teamB: {
+        right: opts.teamBPlayers[0] ?? null,
+        left: opts.gameType === "doubles" ? opts.teamBPlayers[1] ?? null : null
+      }
+    },
+    winnerTeam: null,
+    isFirstServeOfGame: true,
+    rallies: [],
+    redoStack: []
+  };
+}
+function formatScoreCallout(state) {
+  const servingScore = state.servingTeam === "A" ? state.teamAScore : state.teamBScore;
+  const receivingScore = state.servingTeam === "A" ? state.teamBScore : state.teamAScore;
+  if (state.gameType === "doubles" && state.scoringMode === "side_out") {
+    return `${servingScore} - ${receivingScore} - ${state.serverNumber}`;
+  }
+  return `${servingScore} - ${receivingScore}`;
+}
+function getActiveServerSide(state) {
+  const servingScore = state.servingTeam === "A" ? state.teamAScore : state.teamBScore;
+  if (state.gameType === "singles") {
+    return servingScore % 2 === 0 ? "right" : "left";
+  }
+  return deriveDoublesServerSide(state);
+}
+function deriveDoublesServerSide(state) {
+  let pointsThisPossession = 0;
+  let server1Points = 0;
+  let sawServerChange = false;
+  for (let i = state.rallies.length - 1; i >= 0; i--) {
+    const ev = state.rallies[i];
+    if (ev.event_type === "side_out") {
+      break;
+    }
+    if (ev.event_type === "server_change") {
+      sawServerChange = true;
+    } else if (ev.event_type === "point") {
+      pointsThisPossession++;
+      if (sawServerChange) {
+        server1Points++;
+      }
+    }
+  }
+  if (!sawServerChange) {
+    return pointsThisPossession % 2 === 0 ? "right" : "left";
+  }
+  const server2Points = pointsThisPossession - server1Points;
+  const server2StartSide = server1Points % 2 === 0 ? "left" : "right";
+  if (server2Points % 2 === 0) {
+    return server2StartSide;
+  }
+  return server2StartSide === "right" ? "left" : "right";
+}
+function getActiveServerPlayerId(state) {
+  const side = getActiveServerSide(state);
+  const teamPos = state.servingTeam === "A" ? state.positions.teamA : state.positions.teamB;
+  if (state.gameType === "singles") {
+    return teamPos.right ?? teamPos.left;
+  }
+  return teamPos[side];
+}
+function checkWinner(teamAScore, teamBScore, targetScore, winByTwo) {
+  const minMargin = winByTwo ? 2 : 1;
+  if (teamAScore >= targetScore && teamAScore - teamBScore >= minMargin) {
+    return "A";
+  }
+  if (teamBScore >= targetScore && teamBScore - teamAScore >= minMargin) {
+    return "B";
+  }
+  return null;
+}
+function swapTeamPositions(pos) {
+  return { right: pos.left, left: pos.right };
+}
+function recordRally(state, rallyWinner, matchId) {
+  if (state.winnerTeam) {
+    return state;
+  }
+  const preServingSide = getActiveServerSide(state);
+  const preServingPlayerId = getActiveServerPlayerId(state);
+  const recvPositions = state.servingTeam === "A" ? state.positions.teamB : state.positions.teamA;
+  const preReceivingPlayerId = state.gameType === "singles" ? recvPositions.right ?? recvPositions.left : preServingSide === "right" ? recvPositions.right : recvPositions.left;
+  let teamAScore = state.teamAScore;
+  let teamBScore = state.teamBScore;
+  let servingTeam = state.servingTeam;
+  let serverNumber = state.serverNumber;
+  let positions = {
+    teamA: { ...state.positions.teamA },
+    teamB: { ...state.positions.teamB }
+  };
+  let eventType = "point";
+  if (state.scoringMode === "side_out") {
+    if (rallyWinner === state.servingTeam) {
+      if (rallyWinner === "A") {
+        teamAScore += 1;
+        if (state.gameType === "doubles") {
+          positions.teamA = swapTeamPositions(positions.teamA);
+        }
+      } else {
+        teamBScore += 1;
+        if (state.gameType === "doubles") {
+          positions.teamB = swapTeamPositions(positions.teamB);
+        }
+      }
+      eventType = "point";
+    } else {
+      if (state.gameType === "doubles" && state.serverNumber === 1) {
+        serverNumber = 2;
+        eventType = "server_change";
+      } else {
+        servingTeam = state.servingTeam === "A" ? "B" : "A";
+        serverNumber = 1;
+        eventType = "side_out";
+      }
+    }
+  } else {
+    if (rallyWinner === "A") {
+      teamAScore += 1;
+    } else {
+      teamBScore += 1;
+    }
+    if (rallyWinner === state.servingTeam) {
+      if (state.gameType === "doubles") {
+        if (rallyWinner === "A") {
+          positions.teamA = swapTeamPositions(positions.teamA);
+        } else {
+          positions.teamB = swapTeamPositions(positions.teamB);
+        }
+      }
+      eventType = "point";
+    } else {
+      servingTeam = rallyWinner;
+      serverNumber = 1;
+      eventType = "side_out";
+    }
+  }
+  const winnerTeam = checkWinner(teamAScore, teamBScore, state.targetScore, state.winByTwo);
+  const nextStateBase = {
+    ...state,
+    teamAScore,
+    teamBScore,
+    servingTeam,
+    serverNumber,
+    positions,
+    winnerTeam,
+    isFirstServeOfGame: false,
+    rallies: state.rallies,
+    redoStack: []
+  };
+  const callout = formatScoreCallout(nextStateBase);
+  const rallyEvent = {
+    id: crypto.randomUUID ? crypto.randomUUID() : `rally_${Date.now()}_${state.rallies.length + 1}`,
+    match_id: matchId,
+    seq: state.rallies.length + 1,
+    rally_winner: rallyWinner,
+    event_type: eventType,
+    serving_team: servingTeam,
+    server_number: serverNumber,
+    team_a_score: teamAScore,
+    team_b_score: teamBScore,
+    callout,
+    created_at: (/* @__PURE__ */ new Date()).toISOString(),
+    serving_player_id: preServingPlayerId,
+    receiving_player_id: preReceivingPlayerId,
+    serving_side: preServingSide,
+    outcome_tag: null
+  };
+  return {
+    ...nextStateBase,
+    rallies: [...state.rallies, rallyEvent]
+  };
 }
 
 // shared/rotationEngine.ts
@@ -1506,6 +1653,7 @@ import { createClient } from "@supabase/supabase-js";
 var SupabaseAdapter = class {
   client;
   url;
+  matchUpdateLocks = /* @__PURE__ */ new Map();
   constructor(url, key) {
     this.url = url;
     this.client = createClient(url, key, {
@@ -1772,29 +1920,45 @@ var SupabaseAdapter = class {
     };
   }
   async updateMatch(id, patch) {
+    const prev = this.matchUpdateLocks.get(id) ?? Promise.resolve();
+    const next = prev.catch(() => void 0).then(() => this.performUpdateMatch(id, patch));
+    this.matchUpdateLocks.set(id, next);
+    try {
+      return await next;
+    } finally {
+      if (this.matchUpdateLocks.get(id) === next) {
+        this.matchUpdateLocks.delete(id);
+      }
+    }
+  }
+  async performUpdateMatch(id, patch) {
     const { rallies, ...matchFields } = patch;
     if (Object.keys(matchFields).length > 0) {
       const { error } = await this.client.from("matches").update(matchFields).eq("id", id);
       if (error) throw new Error(error.message);
     }
     if (rallies) {
-      await this.client.from("rally_events").delete().eq("match_id", id);
-      if (rallies.length > 0) {
-        const { error: rErr } = await this.client.from("rally_events").insert(
-          rallies.map((r) => ({
-            match_id: id,
-            seq: r.seq,
-            rally_winner: r.rally_winner,
-            event_type: r.event_type,
-            serving_team: r.serving_team,
-            server_number: r.server_number,
-            team_a_score: r.team_a_score,
-            team_b_score: r.team_b_score,
-            callout: r.callout,
-            created_at: r.created_at
-          }))
-        );
+      if (rallies.length === 0) {
+        const { error: delErr } = await this.client.from("rally_events").delete().eq("match_id", id);
+        if (delErr) throw new Error(delErr.message);
+      } else {
+        const rows = rallies.map((r) => ({
+          match_id: id,
+          seq: r.seq,
+          rally_winner: r.rally_winner,
+          event_type: r.event_type,
+          serving_team: r.serving_team,
+          server_number: r.server_number,
+          team_a_score: r.team_a_score,
+          team_b_score: r.team_b_score,
+          callout: r.callout,
+          created_at: r.created_at
+        }));
+        const { error: rErr } = await this.client.from("rally_events").upsert(rows, { onConflict: "match_id,seq" });
         if (rErr) throw new Error(rErr.message);
+        const maxSeq = rallies.reduce((max, r) => Math.max(max, r.seq), 0);
+        const { error: pruneErr } = await this.client.from("rally_events").delete().eq("match_id", id).gt("seq", maxSeq);
+        if (pruneErr) throw new Error(pruneErr.message);
       }
     }
     return this.getMatch(id);
@@ -1849,104 +2013,6 @@ function getRepository() {
 
 // server/src/schedulerSync.ts
 import { createClient as createClient2 } from "@supabase/supabase-js";
-
-// shared/venues.ts
-var VENUES = [
-  {
-    id: "fukuda",
-    shortName: "\u798F\u7530\u516C\u5712",
-    fullName: "\u30B7\u30DE\u30C0\u307F\u3089\u3044\u30A2\u30EA\u30FC\u30CA\u6C34\u5CF6\uFF08\u798F\u7530\u516C\u5712\uFF09",
-    courtType: "indoor"
-  },
-  {
-    id: "mizushima",
-    shortName: "\u6C34\u5CF6\u4F53\u80B2\u9928",
-    fullName: "\u6C34\u5CF6\u4F53\u80B2\u9928",
-    courtType: "indoor"
-  },
-  {
-    id: "kurashiki_gym",
-    shortName: "\u5009\u6577\u4F53\u80B2\u9928",
-    fullName: "\u5009\u6577\u4F53\u80B2\u9928",
-    courtType: "indoor"
-  },
-  {
-    id: "kurashiki_weightlifting",
-    shortName: "\u5009\u6577\u904B\u52D5\u516C\u5712WL\u5834",
-    fullName: "\u5009\u6577\u904B\u52D5\u516C\u5712 \u30A6\u30A8\u30A4\u30C8\u30EA\u30D5\u30C6\u30A3\u30F3\u30B0\u5834",
-    courtType: "indoor"
-  },
-  {
-    id: "mizushima_fureai",
-    shortName: "\u6C34\u5CF6\u3075\u308C\u3042\u3044\u30BB\u30F3\u30BF\u30FC",
-    fullName: "\u6C34\u5CF6\u3075\u308C\u3042\u3044\u30BB\u30F3\u30BF\u30FC \u4F53\u80B2\u9928",
-    courtType: "indoor"
-  },
-  {
-    id: "mabi",
-    shortName: "\u771F\u5099\u7DCF\u5408\u516C\u5712",
-    fullName: "\u771F\u5099\u7DCF\u5408\u516C\u5712 \u4F53\u80B2\u9928",
-    courtType: "indoor"
-  },
-  {
-    id: "tamashima",
-    shortName: "\u7389\u5CF6\u306E\u68EE",
-    fullName: "\u7389\u5CF6\u306E\u68EE \u4F53\u80B2\u9928",
-    courtType: "indoor"
-  },
-  {
-    id: "nakayama",
-    shortName: "\u4E2D\u5C71\u516C\u5712",
-    fullName: "\u4E2D\u5C71\u516C\u5712 \u4F53\u80B2\u9928",
-    courtType: "indoor"
-  },
-  {
-    id: "nadasaki",
-    shortName: "\u7058\u5D0E\u4F53\u80B2\u30BB\u30F3\u30BF\u30FC",
-    fullName: "\u7058\u5D0E\u4F53\u80B2\u30BB\u30F3\u30BF\u30FC",
-    courtType: "indoor"
-  },
-  {
-    id: "futsukaichi",
-    shortName: "\u4E8C\u65E5\u5E02\u516C\u5712\u30C6\u30CB\u30B9",
-    fullName: "\u4E8C\u65E5\u5E02\u516C\u5712\u30C6\u30CB\u30B9\u30B3\u30FC\u30C8\uFF08\u7167\u660E\u3042\u308A\uFF09",
-    courtType: "outdoor"
-  },
-  {
-    id: "yoshiigawa_1",
-    shortName: "\u5409\u4E95\u5DDD\u7B2C1\u7DD1\u5730",
-    fullName: "\u5409\u4E95\u5DDD\u7B2C1\u7DD1\u5730 \u30C6\u30CB\u30B9\u30B3\u30FC\u30C8\uFF08\u301C17:00\uFF09",
-    courtType: "outdoor"
-  },
-  {
-    id: "hyakkengawa_a",
-    shortName: "\u767E\u9593\u5DDD\u7DD1\u5730(A\u30FB\u6771\u5DDD\u539F)",
-    fullName: "\u767E\u9593\u5DDD\u7DD1\u5730 \u30C6\u30CB\u30B9\u30B3\u30FC\u30C8A\uFF08\u6771\u5DDD\u539F\u30FB\u30CF\u30FC\u30C9\u30B3\u30FC\u30C8\u30FB\u301C17:00\uFF09",
-    courtType: "outdoor"
-  },
-  {
-    id: "hyakkengawa_c",
-    shortName: "\u767E\u9593\u5DDD\u7DD1\u5730(C\u30FB\u795E\u4E0B)",
-    fullName: "\u767E\u9593\u5DDD\u7DD1\u5730 \u30C6\u30CB\u30B9\u30B3\u30FC\u30C8C\uFF08\u795E\u4E0B\u30FB\u30CF\u30FC\u30C9\u30B3\u30FC\u30C8\u30FB\u301C17:00\uFF09",
-    courtType: "outdoor"
-  }
-];
-var VENUE_MAP = new Map(VENUES.map((v) => [v.id, v]));
-function resolveVenue(venueId, manualVenueName, fallbackCourtType = "indoor") {
-  if (venueId && venueId !== "other") {
-    const found = VENUE_MAP.get(venueId);
-    if (found) return found;
-  }
-  const cleanName = manualVenueName?.trim() || venueId || "Custom Venue";
-  return {
-    id: venueId || "other",
-    shortName: cleanName,
-    fullName: cleanName,
-    courtType: fallbackCourtType
-  };
-}
-
-// server/src/schedulerSync.ts
 var schedulerClient = null;
 function getSchedulerClient() {
   if (schedulerClient) return schedulerClient;
@@ -2219,6 +2285,46 @@ app.get("/api/sessions/:id", async (req, res) => {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to load session" });
   }
 });
+async function createMatchesForProposal(params) {
+  const { session, roundNumber, proposalMatches, playerMap } = params;
+  const createdMatches = [];
+  for (const pm of proposalMatches) {
+    const a1 = playerMap.get(pm.teamA[0]);
+    const a2 = playerMap.get(pm.teamA[1]);
+    const b1 = playerMap.get(pm.teamB[0]);
+    const b2 = playerMap.get(pm.teamB[1]);
+    const liveState = createInitialLiveState({
+      gameType: "doubles",
+      scoringMode: session.scoring_mode,
+      targetScore: session.target_score,
+      winByTwo: session.win_by_two,
+      initialServingTeam: "A",
+      teamAPlayers: pm.teamA,
+      teamBPlayers: pm.teamB
+    });
+    const match = await repo.createMatch({
+      session_id: session.id,
+      round_number: roundNumber,
+      court_number: pm.court_number,
+      game_type: "doubles",
+      scoring_mode: session.scoring_mode,
+      target_score: session.target_score,
+      win_by_two: session.win_by_two,
+      status: "scheduled",
+      team_a_name: `${firstName(a1, "P1")} & ${firstName(a2, "P2")}`,
+      team_b_name: `${firstName(b1, "P3")} & ${firstName(b2, "P4")}`,
+      participants: [
+        { player_id: pm.teamA[0], team: "A", starting_side: "right" },
+        { player_id: pm.teamA[1], team: "A", starting_side: "left" },
+        { player_id: pm.teamB[0], team: "B", starting_side: "right" },
+        { player_id: pm.teamB[1], team: "B", starting_side: "left" }
+      ],
+      live_state: liveState
+    });
+    createdMatches.push(match);
+  }
+  return createdMatches;
+}
 app.post("/api/sessions", async (req, res) => {
   try {
     const body = req.body ?? {};
@@ -2246,42 +2352,12 @@ app.post("/api/sessions", async (req, res) => {
       previousMatches: [],
       nextRoundNumber: 1
     });
-    const createdMatches = [];
-    for (const pm of proposal.matches) {
-      const a1 = playerMap.get(pm.teamA[0]);
-      const a2 = playerMap.get(pm.teamA[1]);
-      const b1 = playerMap.get(pm.teamB[0]);
-      const b2 = playerMap.get(pm.teamB[1]);
-      const liveState = createInitialLiveState({
-        gameType: "doubles",
-        scoringMode: session.scoring_mode,
-        targetScore: session.target_score,
-        winByTwo: session.win_by_two,
-        initialServingTeam: "A",
-        teamAPlayers: pm.teamA,
-        teamBPlayers: pm.teamB
-      });
-      const match = await repo.createMatch({
-        session_id: session.id,
-        round_number: 1,
-        court_number: pm.court_number,
-        game_type: "doubles",
-        scoring_mode: session.scoring_mode,
-        target_score: session.target_score,
-        win_by_two: session.win_by_two,
-        status: "scheduled",
-        team_a_name: `${firstName(a1, "P1")} & ${firstName(a2, "P2")}`,
-        team_b_name: `${firstName(b1, "P3")} & ${firstName(b2, "P4")}`,
-        participants: [
-          { player_id: pm.teamA[0], team: "A", starting_side: "right" },
-          { player_id: pm.teamA[1], team: "A", starting_side: "left" },
-          { player_id: pm.teamB[0], team: "B", starting_side: "right" },
-          { player_id: pm.teamB[1], team: "B", starting_side: "left" }
-        ],
-        live_state: liveState
-      });
-      createdMatches.push(match);
-    }
+    const createdMatches = await createMatchesForProposal({
+      session,
+      roundNumber: 1,
+      proposalMatches: proposal.matches,
+      playerMap
+    });
     res.status(201).json({ ...session, matches: createdMatches });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to create session" });
@@ -2304,42 +2380,12 @@ app.post("/api/sessions/:id/next-round", async (req, res) => {
       previousMatches: session.matches ?? [],
       nextRoundNumber
     });
-    const createdMatches = [];
-    for (const pm of proposal.matches) {
-      const a1 = playerMap.get(pm.teamA[0]);
-      const a2 = playerMap.get(pm.teamA[1]);
-      const b1 = playerMap.get(pm.teamB[0]);
-      const b2 = playerMap.get(pm.teamB[1]);
-      const liveState = createInitialLiveState({
-        gameType: "doubles",
-        scoringMode: session.scoring_mode,
-        targetScore: session.target_score,
-        winByTwo: session.win_by_two,
-        initialServingTeam: "A",
-        teamAPlayers: pm.teamA,
-        teamBPlayers: pm.teamB
-      });
-      const match = await repo.createMatch({
-        session_id: session.id,
-        round_number: nextRoundNumber,
-        court_number: pm.court_number,
-        game_type: "doubles",
-        scoring_mode: session.scoring_mode,
-        target_score: session.target_score,
-        win_by_two: session.win_by_two,
-        status: "scheduled",
-        team_a_name: `${firstName(a1, "P1")} & ${firstName(a2, "P2")}`,
-        team_b_name: `${firstName(b1, "P3")} & ${firstName(b2, "P4")}`,
-        participants: [
-          { player_id: pm.teamA[0], team: "A", starting_side: "right" },
-          { player_id: pm.teamA[1], team: "A", starting_side: "left" },
-          { player_id: pm.teamB[0], team: "B", starting_side: "right" },
-          { player_id: pm.teamB[1], team: "B", starting_side: "left" }
-        ],
-        live_state: liveState
-      });
-      createdMatches.push(match);
-    }
+    const createdMatches = await createMatchesForProposal({
+      session,
+      roundNumber: nextRoundNumber,
+      proposalMatches: proposal.matches,
+      playerMap
+    });
     const updated = await repo.updateSession(session.id, { current_round: nextRoundNumber });
     res.json({ session: updated, new_matches: createdMatches, sitting_out: proposal.sitting_out });
   } catch (err) {

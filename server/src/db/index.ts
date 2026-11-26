@@ -6,6 +6,7 @@ import { SupabaseAdapter } from './supabaseAdapter';
 
 let singleton: DataRepository | null = null;
 
+/** Returns the singleton `DataRepository` adapter (Supabase, Postgres, or local JSON fallback). */
 export function getRepository(): DataRepository {
   if (singleton) return singleton;
 

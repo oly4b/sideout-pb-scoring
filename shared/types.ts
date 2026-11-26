@@ -12,6 +12,13 @@ export type SessionFormat =
 export type SessionStatus = 'active' | 'completed';
 export type RallyEventType = 'point' | 'server_change' | 'side_out';
 
+export type RallyOutcomeTag =
+  | 'ace'
+  | 'service_fault'
+  | 'winner'
+  | 'net'
+  | 'out';
+
 export interface Player {
   id: string;
   name: string;
@@ -40,6 +47,10 @@ export interface RallyEvent {
   team_b_score: number;
   callout: string;
   created_at: string;
+  serving_player_id?: string | null;
+  receiving_player_id?: string | null;
+  serving_side?: CourtSide | null;
+  outcome_tag?: RallyOutcomeTag | null;
 }
 
 export interface CourtPositions {
