@@ -56,6 +56,7 @@ export function createInitialLiveState(opts: CreateLiveStateOptions): LiveGameSt
     isFirstServeOfGame: true,
     rallies: [],
     redoStack: [],
+    version: 0,
   };
 }
 
@@ -304,6 +305,7 @@ export function recordRally(
   return {
     ...nextStateBase,
     rallies: [...state.rallies, rallyEvent],
+    version: (state.version ?? state.rallies.length) + 1,
   };
 }
 
@@ -349,6 +351,7 @@ export function undoLastRally(
     ...state.redoStack,
   ];
 
+  rebuilt.version = (state.version ?? state.rallies.length) + 1;
   return rebuilt;
 }
 
@@ -367,6 +370,7 @@ export function redoLastRally(state: LiveGameState): LiveGameState {
     isFirstServeOfGame: next.isFirstServeOfGame,
     rallies: [...state.rallies, next.rallyEvent],
     redoStack: rest,
+    version: (state.version ?? state.rallies.length) + 1,
   };
 }
 
@@ -375,18 +379,20 @@ export function swapServerManually(state: LiveGameState): LiveGameState {
   if (state.winnerTeam) return state;
   if (state.gameType === 'doubles' && state.scoringMode === 'side_out') {
     if (state.serverNumber === 1) {
-      return { ...state, serverNumber: 2 };
+      return { ...state, serverNumber: 2, version: (state.version ?? state.rallies.length) + 1 };
     }
     return {
       ...state,
       servingTeam: state.servingTeam === 'A' ? 'B' : 'A',
       serverNumber: 1,
+      version: (state.version ?? state.rallies.length) + 1,
     };
   }
   return {
     ...state,
     servingTeam: state.servingTeam === 'A' ? 'B' : 'A',
     serverNumber: 1,
+    version: (state.version ?? state.rallies.length) + 1,
   };
 }
 
@@ -399,6 +405,7 @@ export function swapTeamBoxesManually(state: LiveGameState, team: TeamId): LiveG
       teamA: team === 'A' ? swapTeamPositions(state.positions.teamA) : state.positions.teamA,
       teamB: team === 'B' ? swapTeamPositions(state.positions.teamB) : state.positions.teamB,
     },
+    version: (state.version ?? state.rallies.length) + 1,
   };
 }
 
@@ -807,6 +814,7 @@ export function tagRallyOutcome(
   return {
     ...state,
     rallies: state.rallies.map((r) => (r.seq === seq ? { ...r, outcome_tag: tag } : r)),
+    version: (state.version ?? state.rallies.length) + 1,
   };
 }
 

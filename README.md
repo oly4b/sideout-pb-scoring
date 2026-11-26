@@ -17,9 +17,10 @@ Designed as a unified companion app to [**桃dinks Session Scheduler**](https://
   - **Big Scoreboard View (`SideoutMatchStage`, `RollingDigit`)**: High-contrast spectator view with animated rolling digits, `FlameBadge` hot-streak indicators, `PickleballMascot`, and `GoodGameOverlay` match-completion celebration.
 - **Detailed Rally Tagging (`Detailed Stats`, on by default)**:
   - Context-aware 2×2 modal popout after each rally with fixed muscle-memory positions: `Ace` / `Service Fault` (top-left, alternating by whether the serving or receiving team won), `Winner` (top-right), `Net` (bottom-left), and `Out` (bottom-right), plus `Skip`.
-- **Live Match Controls & Persistence**:
+- **Live Match Controls & Multi-Device Sync**:
   - **Voice Score Announcer** (`Web Speech API`), **Sound Effects** (`src/lib/soundEffects.ts`), **Momentum Gauge**, and live **Match Analytics**.
   - Full **Undo / Redo**, manual server/box correction, and **Serialized Auto-Save** with instant resume for in-progress matches.
+  - **Multi-Device Live Sync & Spectator Mode**: Real-time updates via **Supabase Realtime** (`postgres_changes` on `public.matches`) with automatic polling fallback, an optimistic `expected_version` guard (`409 Conflict` auto-sync so devices never overwrite each other), and a read-only **`Spectator`** toggle.
 
 ### 2. Session & Rotation Organizer (`Sessions`)
 - **Rotation Formats (`shared/rotationEngine.ts`)**:
@@ -113,8 +114,13 @@ npm run dev
    - `DATABASE_URL` (direct PostgreSQL via `pg`).
 4. Optionally set:
    - `SCHEDULER_SUPABASE_URL` + `SCHEDULER_SUPABASE_KEY` to sync upcoming booked sessions from **桃dinks Session Scheduler**.
+   - `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY` (or `VITE_SUPABASE_ANON_KEY`) to enable client-side **Supabase Realtime** live match sync.
    - `VITE_SESSION_SCHEDULER_URL` to override the companion app URL (defaults to `http://localhost:5174` in dev and `https://pb-session-scheduler.vercel.app` in production).
-5. Restart `npm run dev` and open the **Database** tab to confirm live connection health and row counts.
+5. To enable instant Realtime push (otherwise the app falls back to 3.5s/8s polling), add `public.matches` to the `supabase_realtime` publication in the Supabase SQL Editor:
+   ```sql
+   alter publication supabase_realtime add table public.matches;
+   ```
+6. Restart `npm run dev` and open the **Database** tab to confirm live connection health and row counts.
 
 ## Deploying to Vercel
 

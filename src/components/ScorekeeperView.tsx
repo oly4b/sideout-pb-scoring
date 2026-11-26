@@ -2,6 +2,7 @@ import {
   ArrowLeftRight,
   Award,
   CheckCircle2,
+  Eye,
   LayoutGrid,
   Monitor,
   Play,
@@ -40,8 +41,9 @@ import type {
   TargetScore,
   TeamId,
 } from '../../shared/types';
-import { api } from '../lib/api';
+import { api, ConflictError } from '../lib/api';
 import { copy, type Lang } from '../lib/i18n';
+import { supabaseClient } from '../lib/supabase';
 import { MatchAnalyticsPanel } from './MatchAnalyticsPanel';
 import { playRallySound, playUndoSound } from '../lib/soundEffects';
 import { SideoutMatchStage } from './match/SideoutMatchStage';
@@ -101,11 +103,13 @@ export function ScorekeeperView({
   const [viewMode, setViewMode] = useState<'court' | 'scoreboard'>('court');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [detailedStats, setDetailedStats] = useState(true);
+  const [spectatorMode, setSpectatorMode] = useState(false);
   const [pendingTagSeq, setPendingTagSeq] = useState<number | null>(null);
   const [liveState, setLiveState] = useState<LiveGameState | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [saving, setSaving] = useState(false);
   const saveTimerRef = useRef<number | null>(null);
+  const baseVersionRef = useRef<number>(0);
   const inFlightSaveRef = useRef<Promise<void> | null>(null);
   const pendingSaveRef = useRef<{
     match: Match;
@@ -147,6 +151,7 @@ export function ScorekeeperView({
       });
 
     setLiveState(hydrated);
+    baseVersionRef.current = hydrated.version ?? hydrated.rallies.length;
     if (activeMatch.session_id) {
       setAutoSwitchEnds(defaultAutoSwitchEnds);
     }
@@ -184,6 +189,63 @@ export function ScorekeeperView({
     return () => window.clearTimeout(timer);
   }, [activeMatch?.id, isLiveReady, viewMode]);
 
+  useEffect(() => {
+    if (!activeMatch || activeMatch.status === 'completed') return;
+    let cancelled = false;
+
+    const syncFromRemote = async () => {
+      if (cancelled || inFlightSaveRef.current || pendingSaveRef.current) return;
+      try {
+        const fresh = await api.getMatch(activeMatch.id);
+        if (cancelled || inFlightSaveRef.current || pendingSaveRef.current) return;
+        const remoteVersion = fresh.live_state?.version ?? fresh.rallies.length;
+        if (
+          remoteVersion > baseVersionRef.current ||
+          (fresh.status === 'completed' && activeMatch.status !== 'completed')
+        ) {
+          baseVersionRef.current = remoteVersion;
+          if (fresh.live_state) {
+            setLiveState(fresh.live_state);
+          }
+          onMatchUpdated(fresh);
+        }
+      } catch {
+        // ignore transient polling errors
+      }
+    };
+
+    const channel = supabaseClient
+      ? supabaseClient
+          .channel(`match-live-${activeMatch.id}`)
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'matches',
+              filter: `id=eq.${activeMatch.id}`,
+            },
+            () => {
+              void syncFromRemote();
+            }
+          )
+          .subscribe()
+      : null;
+
+    const pollMs = supabaseClient ? 8000 : 3500;
+    const pollId = window.setInterval(() => {
+      void syncFromRemote();
+    }, pollMs);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(pollId);
+      if (channel && supabaseClient) {
+        void supabaseClient.removeChannel(channel);
+      }
+    };
+  }, [activeMatch?.id, activeMatch?.status, onMatchUpdated]);
+
   const flushPendingSave = () => {
     if (inFlightSaveRef.current || !pendingSaveRef.current) {
       return inFlightSaveRef.current ?? Promise.resolve();
@@ -205,11 +267,28 @@ export function ScorekeeperView({
             duration_seconds: payload.durationSeconds,
             live_state: payload.next,
             rallies: payload.next.rallies,
+            expected_version: baseVersionRef.current,
           });
+          baseVersionRef.current = updated.live_state?.version ?? updated.rallies.length;
           onMatchUpdated(updated);
         }
       } catch (err) {
-        onNotify(err instanceof Error ? err.message : 'Failed to save rally');
+        if (err instanceof ConflictError && err.latestMatch) {
+          const latest = err.latestMatch;
+          pendingSaveRef.current = null;
+          baseVersionRef.current = latest.live_state?.version ?? latest.rallies.length;
+          if (latest.live_state) {
+            setLiveState(latest.live_state);
+          }
+          onMatchUpdated(latest);
+          onNotify(
+            lang === 'ja'
+              ? '他の端末の最新スコアと同期しました'
+              : 'Synced latest score from another device'
+          );
+        } else {
+          onNotify(err instanceof Error ? err.message : 'Failed to save rally');
+        }
       } finally {
         inFlightSaveRef.current = null;
         setSaving(false);
@@ -241,7 +320,7 @@ export function ScorekeeperView({
   };
 
   const handleRally = (winner: TeamId) => {
-    if (!activeMatch || !liveState || liveState.winnerTeam) return;
+    if (!activeMatch || !liveState || liveState.winnerTeam || spectatorMode) return;
     const next = recordRally(liveState, winner, activeMatch.id);
     setLiveState(next);
     if (soundEnabled) {
@@ -265,7 +344,7 @@ export function ScorekeeperView({
   };
 
   const handleUndo = () => {
-    if (!activeMatch || !liveState || liveState.rallies.length === 0) return;
+    if (!activeMatch || !liveState || liveState.rallies.length === 0 || spectatorMode) return;
     setPendingTagSeq(null);
     const teamAParts = activeMatch.participants.filter((p) => p.team === 'A');
     const teamBParts = activeMatch.participants.filter((p) => p.team === 'B');
@@ -283,28 +362,28 @@ export function ScorekeeperView({
   };
 
   const handleRedo = () => {
-    if (!activeMatch || !liveState || liveState.redoStack.length === 0) return;
+    if (!activeMatch || !liveState || liveState.redoStack.length === 0 || spectatorMode) return;
     const next = redoLastRally(liveState);
     setLiveState(next);
     persistMatchState(activeMatch, next);
   };
 
   const handleSwapServer = () => {
-    if (!activeMatch || !liveState || liveState.winnerTeam) return;
+    if (!activeMatch || !liveState || liveState.winnerTeam || spectatorMode) return;
     const next = swapServerManually(liveState);
     setLiveState(next);
     persistMatchState(activeMatch, next);
   };
 
   const handleSwapBoxes = (team: TeamId) => {
-    if (!activeMatch || !liveState || liveState.gameType !== 'doubles') return;
+    if (!activeMatch || !liveState || liveState.gameType !== 'doubles' || spectatorMode) return;
     const next = swapTeamBoxesManually(liveState, team);
     setLiveState(next);
     persistMatchState(activeMatch, next);
   };
 
   const handleFinishEarly = async () => {
-    if (!activeMatch || !liveState) return;
+    if (!activeMatch || !liveState || spectatorMode) return;
     const winner: TeamId | null =
       liveState.teamAScore > liveState.teamBScore
         ? 'A'
@@ -321,7 +400,11 @@ export function ScorekeeperView({
         await inFlightSaveRef.current.catch(() => undefined);
       }
       setSaving(true);
-      const finishedState: LiveGameState = { ...liveState, winnerTeam: winner };
+      const finishedState: LiveGameState = {
+        ...liveState,
+        winnerTeam: winner,
+        version: (liveState.version ?? liveState.rallies.length) + 1,
+      };
       const updated = await api.updateMatch(activeMatch.id, {
         status: 'completed',
         team_a_score: liveState.teamAScore,
@@ -331,7 +414,9 @@ export function ScorekeeperView({
         duration_seconds: elapsedSeconds,
         live_state: finishedState,
         rallies: liveState.rallies,
+        expected_version: baseVersionRef.current,
       });
+      baseVersionRef.current = updated.live_state?.version ?? updated.rallies.length;
       setLiveState(finishedState);
       onMatchUpdated(updated);
       onNotify(lang === 'ja' ? '試合履歴を保存しました' : 'Match saved to game history');
@@ -888,6 +973,28 @@ export function ScorekeeperView({
             }}
           >
             {lang === 'ja' ? '詳細統計' : 'Stats'}: {detailedStats ? 'ON' : 'OFF'}
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${spectatorMode ? 'btn-lime' : 'btn-secondary'}`}
+            aria-pressed={spectatorMode}
+            onClick={() => {
+              const nextSpec = !spectatorMode;
+              setSpectatorMode(nextSpec);
+              if (nextSpec) setPendingTagSeq(null);
+              onNotify(
+                lang === 'ja'
+                  ? nextSpec
+                    ? '観戦モード（読み取り専用・自動同期）'
+                    : 'スコア入力モードに戻りました'
+                  : nextSpec
+                    ? 'Spectator mode (read-only live sync)'
+                    : 'Scorekeeper input enabled'
+              );
+            }}
+          >
+            <Eye size={13} />
+            {lang === 'ja' ? '観戦' : 'Spectator'}
           </button>
         </div>
       </div>

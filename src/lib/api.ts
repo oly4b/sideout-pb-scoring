@@ -19,6 +19,16 @@ import type {
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || '/api';
 
+/** Error thrown on HTTP 409 Conflict, carrying the server's `latestMatch` snapshot for automatic resync. */
+export class ConflictError extends Error {
+  latestMatch?: Match;
+  constructor(message: string, latestMatch?: Match) {
+    super(message);
+    this.name = 'ConflictError';
+    this.latestMatch = latestMatch;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: {
@@ -29,11 +39,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     let message = `Request failed (${res.status})`;
+    let latestMatch: Match | undefined;
     try {
       const body = await res.json();
       if (body?.error) message = body.error;
+      if (body?.latest_match) latestMatch = body.latest_match as Match;
     } catch {
       // ignore json parse error
+    }
+    if (res.status === 409) {
+      throw new ConflictError(message, latestMatch);
     }
     throw new Error(message);
   }
@@ -145,6 +160,7 @@ export const api = {
       duration_seconds?: number;
       live_state?: LiveGameState | null;
       rallies?: RallyEvent[];
+      expected_version?: number;
     }
   ) =>
     request<Match>(`/matches/${id}`, {

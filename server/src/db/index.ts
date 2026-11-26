@@ -1,3 +1,4 @@
+import os from 'node:os';
 import path from 'node:path';
 import { LocalJsonAdapter } from './localJsonAdapter';
 import { PostgresAdapter } from './postgresAdapter';
@@ -9,6 +10,12 @@ let singleton: DataRepository | null = null;
 /** Returns the singleton `DataRepository` adapter (Supabase, Postgres, or local JSON fallback). */
 export function getRepository(): DataRepository {
   if (singleton) return singleton;
+
+  if (process.env.VITEST) {
+    const testDbPath = path.join(os.tmpdir(), `momodinks-vitest-${process.pid}.json`);
+    singleton = new LocalJsonAdapter(testDbPath);
+    return singleton;
+  }
 
   const supabaseUrl =
     process.env.SUPABASE_URL?.trim() ||

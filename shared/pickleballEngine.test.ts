@@ -597,14 +597,18 @@ describe('pickleballEngine', () => {
       teamBPlayers: ['B1', 'B2'],
     });
     s = recordRally(s, 'A', 'm_undo');
+    expect(s.version).toBe(1);
     s = tagRallyOutcome(s, 1, 'ace');
     expect(s.rallies[0].outcome_tag).toBe('ace');
+    expect(s.version).toBe(2);
 
     s = undoLastRally(s, 'A', ['A1', 'A2'], ['B1', 'B2']);
     expect(s.rallies).toHaveLength(0);
+    expect(s.version).toBe(3);
     s = redoLastRally(s);
     expect(s.rallies).toHaveLength(1);
     expect(s.rallies[0].outcome_tag).toBe('ace');
+    expect(s.version).toBe(4);
 
     const mkP = (id: string): Player => ({
       id,

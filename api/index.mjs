@@ -222,7 +222,8 @@ function createInitialLiveState(opts) {
     winnerTeam: null,
     isFirstServeOfGame: true,
     rallies: [],
-    redoStack: []
+    redoStack: [],
+    version: 0
   };
 }
 function formatScoreCallout(state) {
@@ -384,7 +385,8 @@ function recordRally(state, rallyWinner, matchId) {
   };
   return {
     ...nextStateBase,
-    rallies: [...state.rallies, rallyEvent]
+    rallies: [...state.rallies, rallyEvent],
+    version: (state.version ?? state.rallies.length) + 1
   };
 }
 
@@ -758,6 +760,7 @@ function computePlayerDetailStats(playerId, players, matches) {
 }
 
 // server/src/db/index.ts
+import os from "node:os";
 import path2 from "node:path";
 
 // server/src/db/localJsonAdapter.ts
@@ -1987,6 +1990,11 @@ var SupabaseAdapter = class {
 var singleton = null;
 function getRepository() {
   if (singleton) return singleton;
+  if (process.env.VITEST) {
+    const testDbPath = path2.join(os.tmpdir(), `momodinks-vitest-${process.pid}.json`);
+    singleton = new LocalJsonAdapter(testDbPath);
+    return singleton;
+  }
   const supabaseUrl = process.env.SUPABASE_URL?.trim() || process.env.VITE_SUPABASE_URL?.trim() || process.env.SCHEDULER_SUPABASE_URL?.trim();
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || process.env.SUPABASE_ANON_KEY?.trim() || process.env.SUPABASE_PUBLISHABLE_KEY?.trim() || process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() || process.env.VITE_SUPABASE_ANON_KEY?.trim() || process.env.SCHEDULER_SUPABASE_KEY?.trim();
   const databaseUrl = process.env.DATABASE_URL?.trim();
@@ -2494,7 +2502,25 @@ app.post("/api/matches", async (req, res) => {
 });
 app.patch("/api/matches/:id", async (req, res) => {
   try {
-    const updated = await repo.updateMatch(req.params.id, req.body ?? {});
+    const body = req.body ?? {};
+    const expectedVersion = typeof body.expected_version === "number" ? body.expected_version : void 0;
+    if (expectedVersion !== void 0) {
+      const existing = await repo.getMatch(req.params.id);
+      if (!existing) {
+        res.status(404).json({ error: "Match not found" });
+        return;
+      }
+      const currentVersion = existing.live_state?.version ?? existing.rallies.length;
+      if (currentVersion !== expectedVersion) {
+        res.status(409).json({
+          error: "Match was updated by another device",
+          latest_match: existing
+        });
+        return;
+      }
+    }
+    const { expected_version: _ignored, ...patch } = body;
+    const updated = await repo.updateMatch(req.params.id, patch);
     if (!updated) {
       res.status(404).json({ error: "Match not found" });
       return;
@@ -2551,7 +2577,7 @@ app.delete("/api/matches/:id", async (req, res) => {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to delete match" });
   }
 });
-if (!process.env.VERCEL) {
+if (!process.env.VERCEL && !process.env.VITEST) {
   const distDir = path3.resolve(process.cwd(), "dist");
   if (fs2.existsSync(distDir)) {
     app.use(express.static(distDir));

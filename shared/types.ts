@@ -76,6 +76,7 @@ export interface LiveGameState {
   positions: CourtPositions;
   winnerTeam: TeamId | null;
   isFirstServeOfGame: boolean;
+  version?: number;
   rallies: RallyEvent[];
   redoStack: Array<{
     teamAScore: number;

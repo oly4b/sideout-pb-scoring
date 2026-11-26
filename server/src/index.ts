@@ -453,7 +453,28 @@ app.post('/api/matches', async (req, res) => {
 
 app.patch('/api/matches/:id', async (req, res) => {
   try {
-    const updated = await repo.updateMatch(req.params.id, req.body ?? {});
+    const body = req.body ?? {};
+    const expectedVersion =
+      typeof body.expected_version === 'number' ? body.expected_version : undefined;
+
+    if (expectedVersion !== undefined) {
+      const existing = await repo.getMatch(req.params.id);
+      if (!existing) {
+        res.status(404).json({ error: 'Match not found' });
+        return;
+      }
+      const currentVersion = existing.live_state?.version ?? existing.rallies.length;
+      if (currentVersion !== expectedVersion) {
+        res.status(409).json({
+          error: 'Match was updated by another device',
+          latest_match: existing,
+        });
+        return;
+      }
+    }
+
+    const { expected_version: _ignored, ...patch } = body;
+    const updated = await repo.updateMatch(req.params.id, patch);
     if (!updated) {
       res.status(404).json({ error: 'Match not found' });
       return;
@@ -513,8 +534,8 @@ app.delete('/api/matches/:id', async (req, res) => {
   }
 });
 
-// Serve built SPA in production if dist/ exists (skipped on Vercel where static files are served by CDN)
-if (!process.env.VERCEL) {
+// Serve built SPA in production if dist/ exists (skipped on Vercel and Vitest)
+if (!process.env.VERCEL && !process.env.VITEST) {
   const distDir = path.resolve(process.cwd(), 'dist');
   if (fs.existsSync(distDir)) {
     app.use(express.static(distDir));

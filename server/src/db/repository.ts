@@ -76,6 +76,7 @@ export interface UpdateMatchPatch {
   duration_seconds?: number;
   live_state?: LiveGameState | null;
   rallies?: RallyEvent[];
+  expected_version?: number;
 }
 
 export interface MatchFilter {
