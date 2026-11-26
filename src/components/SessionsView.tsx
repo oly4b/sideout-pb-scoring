@@ -75,6 +75,21 @@ const FORMAT_META: Record<
 
 const AVATAR_COLORS = ['#1D4ED8', '#15803D', '#E25747', '#B45309', '#0E7490', '#BE185D', '#3F6212'];
 
+function getSafeMapUrl(mapUrl: string | undefined, venueName: string): string {
+  const trimmed = mapUrl?.trim() ?? '';
+  if (trimmed && !trimmed.includes('maps.app.goo.gl')) {
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        return parsed.toString();
+      }
+    } catch {
+      // Fall through to search URL
+    }
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueName)}`;
+}
+
 export function SessionsView({
   lang,
   sessions,
@@ -482,17 +497,15 @@ export function SessionsView({
                       <div className="scheduler-booked-venue">
                         <MapPin size={13} style={{ color: 'var(--brand-emerald)', flexShrink: 0 }} />
                         <span>{b.venue_full_name}</span>
-                        {b.map_url && (
-                          <a
-                            href={b.map_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ color: 'var(--sky-accent)', display: 'inline-flex', alignItems: 'center' }}
-                            title="Open map"
-                          >
-                            <ExternalLink size={12} />
-                          </a>
-                        )}
+                        <a
+                          href={getSafeMapUrl(b.map_url, b.venue_full_name)}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ color: 'var(--sky-accent)', display: 'inline-flex', alignItems: 'center' }}
+                          title={lang === 'ja' ? 'Google マップで開く' : 'Open in Google Maps'}
+                        >
+                          <ExternalLink size={12} />
+                        </a>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
                         <span className="scheduler-booked-type">
