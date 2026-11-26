@@ -1,5 +1,6 @@
 import {
   Activity,
+  Calendar,
   Check,
   Database,
   History,
@@ -193,7 +194,7 @@ export default function App() {
   const dbLabel = dbStatus ? t.dbShort[dbStatus.driver] : '...';
   const schedulerBaseUrl =
     (import.meta.env.VITE_SESSION_SCHEDULER_URL as string | undefined)?.trim() ||
-    'http://localhost:5174';
+    (import.meta.env.DEV ? 'http://localhost:5174' : 'https://pb-session-scheduler.vercel.app');
 
   const handleOpenScheduler = () => {
     try {
@@ -217,7 +218,9 @@ export default function App() {
             <div className="momo-brand-meta">
               <div className="momo-badge-row">
                 <div className="momo-app-toggle" role="group" aria-label="Switch web app">
-                  <span className="momo-app-toggle-item is-active">{t.badgeTop}</span>
+                  <span className="momo-app-toggle-item is-active">
+                    🏓 {t.badgeTop}
+                  </span>
                   <button
                     type="button"
                     className="momo-app-toggle-item tactile-press"
@@ -228,7 +231,7 @@ export default function App() {
                         : 'Switch to session-scheduler'
                     }
                   >
-                    {t.schedulerBadge} ⇄
+                    <Calendar size={11} /> {t.schedulerBadge}
                   </button>
                 </div>
                 <button
