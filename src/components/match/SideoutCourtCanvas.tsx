@@ -207,6 +207,20 @@ export function SideoutCourtCanvas({
       }
       transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
     >
+      {/* Scroll-centering anchor: midpoint between net (y=264) and bottom NVZ line (y=346) */}
+      <div
+        data-court-center-anchor="true"
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: '56.5%',
+          height: 1,
+          pointerEvents: 'none',
+        }}
+      />
+
       {/* Perspective Court SVG */}
       <svg
         viewBox="0 0 500 540"

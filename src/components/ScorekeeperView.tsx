@@ -220,7 +220,8 @@ export function ScorekeeperView({
   const isMatchEnded = Boolean(liveState?.winnerTeam);
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      const target = isLiveReady ? scoringSurfaceRef.current : setupShellRef.current;
+      const courtAnchor = scoringSurfaceRef.current?.querySelector('[data-court-center-anchor="true"]');
+      const target = isLiveReady ? (courtAnchor ?? scoringSurfaceRef.current) : setupShellRef.current;
       target?.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
