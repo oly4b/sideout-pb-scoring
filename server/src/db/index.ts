@@ -28,7 +28,9 @@ export function getRepository(): DataRepository {
     return singleton;
   }
 
-  const localPath = path.resolve(process.cwd(), 'server/data/db.json');
+  const localPath = process.env.VERCEL
+    ? '/tmp/momodinks-db.json'
+    : path.resolve(process.cwd(), 'server/data/db.json');
   console.log(`[DB] Using LocalJsonAdapter (${localPath}) — set SUPABASE_URL or DATABASE_URL in .env to connect Postgres/Supabase`);
   singleton = new LocalJsonAdapter(localPath);
   return singleton;

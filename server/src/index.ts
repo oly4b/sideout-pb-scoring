@@ -494,16 +494,20 @@ app.delete('/api/matches/:id', async (req, res) => {
   }
 });
 
-// Serve built SPA in production if dist/ exists
-const distDir = path.resolve(process.cwd(), 'dist');
-if (fs.existsSync(distDir)) {
-  app.use(express.static(distDir));
-  app.get('/{*splat}', (_req, res) => {
-    res.sendFile(path.join(distDir, 'index.html'));
+// Serve built SPA in production if dist/ exists (skipped on Vercel where static files are served by CDN)
+if (!process.env.VERCEL) {
+  const distDir = path.resolve(process.cwd(), 'dist');
+  if (fs.existsSync(distDir)) {
+    app.use(express.static(distDir));
+    app.get('/{*splat}', (_req, res) => {
+      res.sendFile(path.join(distDir, 'index.html'));
+    });
+  }
+
+  const PORT = Number(process.env.PORT ?? 4000);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[API] Sideout Pickleball server listening on http://localhost:${PORT}`);
   });
 }
 
-const PORT = Number(process.env.PORT ?? 4000);
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[API] Sideout Pickleball server listening on http://localhost:${PORT}`);
-});
+export default app;
