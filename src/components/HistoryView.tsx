@@ -38,7 +38,7 @@ function formatMinutes(sec: number): string {
   return `${m}m ${s}s`;
 }
 
-function ScoreProgressionChart({ match }: { match: Match }) {
+function ScoreProgressionChart({ match, lang }: { match: Match; lang: Lang }) {
   const rallies = match.rallies ?? [];
   if (rallies.length === 0) {
     return (
@@ -52,7 +52,9 @@ function ScoreProgressionChart({ match }: { match: Match }) {
           borderRadius: 'var(--radius-sm)',
         }}
       >
-        Recorded via Quick Score — rally-by-rally timeline not available.
+        {lang === 'ja'
+          ? 'クイックスコアで記録されたため、ラリーごとの推移はありません。'
+          : 'Recorded via Quick Score — rally-by-rally timeline not available.'}
       </div>
     );
   }
@@ -375,7 +377,7 @@ export function HistoryView({
         <div className="modal-backdrop" onClick={() => setInspectMatch(null)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Match Summary</h2>
+              <h2>{lang === 'ja' ? '試合サマリー' : 'Match Summary'}</h2>
               <button
                 type="button"
                 className="btn btn-ghost btn-icon"
@@ -399,7 +401,9 @@ export function HistoryView({
             >
               <div>
                 <div style={{ fontWeight: 800, color: 'var(--team-a)' }}>{inspectMatch.team_a_name}</div>
-                <div style={{ fontSize: '0.76rem', color: 'var(--ink-muted)' }}>Team A</div>
+                <div style={{ fontSize: '0.76rem', color: 'var(--ink-muted)' }}>
+                  {lang === 'ja' ? 'チームA' : 'Team A'}
+                </div>
               </div>
               <div
                 style={{
@@ -413,19 +417,25 @@ export function HistoryView({
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontWeight: 800, color: 'var(--team-b)' }}>{inspectMatch.team_b_name}</div>
-                <div style={{ fontSize: '0.76rem', color: 'var(--ink-muted)' }}>Team B</div>
+                <div style={{ fontSize: '0.76rem', color: 'var(--ink-muted)' }}>
+                  {lang === 'ja' ? 'チームB' : 'Team B'}
+                </div>
               </div>
             </div>
 
             <div>
-              <div className="section-heading">Score Progression</div>
-              <ScoreProgressionChart match={inspectMatch} />
+              <div className="section-heading">
+                {lang === 'ja' ? 'スコア推移' : 'Score Progression'}
+              </div>
+              <ScoreProgressionChart match={inspectMatch} lang={lang} />
             </div>
 
             {inspectMatch.rallies.length > 0 && (
               <div>
                 <div className="section-heading">
-                  Rally Log ({inspectMatch.rallies.length} rallies)
+                  {lang === 'ja'
+                    ? `ラリー履歴 (${inspectMatch.rallies.length}ラリー)`
+                    : `Rally Log (${inspectMatch.rallies.length} rallies)`}
                 </div>
                 <div className="rally-timeline">
                   {inspectMatch.rallies.map((r) => (
@@ -438,10 +448,16 @@ export function HistoryView({
                         <span style={{ color: 'var(--ink-muted)', fontWeight: 500 }}>
                           (
                           {r.event_type === 'point'
-                            ? 'Point'
+                            ? lang === 'ja'
+                              ? '得点'
+                              : 'Point'
                             : r.event_type === 'server_change'
-                              ? '2nd Server'
-                              : 'Side Out'}
+                              ? lang === 'ja'
+                                ? '2ndサーバー'
+                                : '2nd Server'
+                              : lang === 'ja'
+                                ? 'サイドアウト'
+                                : 'Side Out'}
                           )
                         </span>
                       </span>
@@ -475,7 +491,7 @@ export function HistoryView({
                       onResumeMatch(m);
                     }}
                   >
-                    <Play size={14} /> Resume Live
+                    <Play size={14} /> {lang === 'ja' ? 'ライブ再開' : 'Resume Live'}
                   </button>
                 )}
                 <button
@@ -483,7 +499,7 @@ export function HistoryView({
                   className="btn btn-secondary btn-sm"
                   onClick={() => setInspectMatch(null)}
                 >
-                  Close
+                  {lang === 'ja' ? '閉じる' : 'Close'}
                 </button>
               </div>
             </div>

@@ -96,6 +96,8 @@ export function ScorekeeperView({
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [saving, setSaving] = useState(false);
   const saveTimerRef = useRef<number | null>(null);
+  const setupShellRef = useRef<HTMLDivElement | null>(null);
+  const scoringSurfaceRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (players.length >= 4 && !teamA1 && !teamB1) {
@@ -149,6 +151,19 @@ export function ScorekeeperView({
     }, 1000);
     return () => window.clearInterval(id);
   }, [activeMatch?.id, activeMatch?.status, liveState?.winnerTeam]);
+
+  const isLiveReady = Boolean(activeMatch && liveState);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const target = isLiveReady ? scoringSurfaceRef.current : setupShellRef.current;
+      target?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+        inline: 'nearest',
+      });
+    }, 60);
+    return () => window.clearTimeout(timer);
+  }, [activeMatch?.id, isLiveReady, viewMode]);
 
   const persistMatchState = (match: Match, next: LiveGameState, immediate = false) => {
     const doSave = async () => {
@@ -382,7 +397,7 @@ export function ScorekeeperView({
   // Match Setup View (compact session-scheduler aligned layout)
   if (!activeMatch || !liveState) {
     return (
-      <div className="scorekeeper-shell">
+      <div ref={setupShellRef} className="scorekeeper-shell">
 
         {inProgressMatches.length > 0 && (
           <section className="section-card is-confirmed">
@@ -796,6 +811,7 @@ export function ScorekeeperView({
       )}
 
       {/* Main Scoring Surface */}
+      <div ref={scoringSurfaceRef} style={{ width: '100%' }}>
       {viewMode === 'court' ? (
         <SideoutMatchStage
           lang={lang}
@@ -984,6 +1000,7 @@ export function ScorekeeperView({
           </div>
         </>
       )}
+      </div>
 
       {/* Momentum Gauge */}
       <div className="card momentum-card">
