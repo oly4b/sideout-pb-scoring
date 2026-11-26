@@ -217,6 +217,7 @@ export function ScorekeeperView({
   }, [activeMatch?.id, activeMatch?.status, liveState?.winnerTeam]);
 
   const isLiveReady = Boolean(activeMatch && liveState);
+  const isMatchEnded = Boolean(liveState?.winnerTeam);
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const target = isLiveReady ? scoringSurfaceRef.current : setupShellRef.current;
@@ -225,9 +226,9 @@ export function ScorekeeperView({
         block: 'center',
         inline: 'nearest',
       });
-    }, 60);
+    }, isMatchEnded ? 100 : 60);
     return () => window.clearTimeout(timer);
-  }, [activeMatch?.id, isLiveReady, viewMode]);
+  }, [activeMatch?.id, isLiveReady, isMatchEnded, viewMode]);
 
   useEffect(() => {
     if (!activeMatch || activeMatch.status === 'completed') return;
@@ -1069,7 +1070,7 @@ export function ScorekeeperView({
         </div>
       </div>
 
-      {liveState.winnerTeam && (
+      {liveState.winnerTeam && viewMode === 'scoreboard' && (
         <div className="winner-banner">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Award size={26} />
@@ -1199,6 +1200,16 @@ export function ScorekeeperView({
                     ? ` (#${liveState.serverNumber})`
                     : ''}
                 </span>
+              ) : liveState.winnerTeam ? (
+                <span className={`tag ${liveState.winnerTeam === 'A' ? 'tag-lime' : ''}`}>
+                  {liveState.winnerTeam === 'A'
+                    ? lang === 'ja'
+                      ? '勝利'
+                      : 'WINNER'
+                    : lang === 'ja'
+                      ? '試合終了'
+                      : 'FINAL'}
+                </span>
               ) : (
                 <span style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>{t.tapHere}</span>
               )}
@@ -1222,6 +1233,16 @@ export function ScorekeeperView({
                   {liveState.gameType === 'doubles' && liveState.scoringMode === 'side_out'
                     ? ` (#${liveState.serverNumber})`
                     : ''}
+                </span>
+              ) : liveState.winnerTeam ? (
+                <span className={`tag ${liveState.winnerTeam === 'B' ? 'tag-lime' : ''}`}>
+                  {liveState.winnerTeam === 'B'
+                    ? lang === 'ja'
+                      ? '勝利'
+                      : 'WINNER'
+                    : lang === 'ja'
+                      ? '試合終了'
+                      : 'FINAL'}
                 </span>
               ) : (
                 <span style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>{t.tapHere}</span>

@@ -1,10 +1,12 @@
-import { ArrowRight, Home, Undo2 } from 'lucide-react';
+import { ArrowRight, Home, Trophy, Undo2 } from 'lucide-react';
 import { motion } from 'motion/react';
+import type { TeamId } from '../../../shared/types';
 import type { Lang } from '../../lib/i18n';
 import { PickleballMascot } from './PickleballMascot';
 
 interface GoodGameOverlayProps {
   lang: Lang;
+  winnerTeam?: TeamId | null;
   teamAName: string;
   teamBName: string;
   teamAScore: number;
@@ -16,8 +18,19 @@ interface GoodGameOverlayProps {
   onHome: () => void;
 }
 
+function getWinnerInitials(label: string): string {
+  const clean = label.trim();
+  if (!clean) return '?';
+  const parts = clean.split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return clean.slice(0, 2).toUpperCase();
+}
+
 export function GoodGameOverlay({
   lang,
+  winnerTeam,
   teamAName,
   teamBName,
   teamAScore,
@@ -28,6 +41,10 @@ export function GoodGameOverlay({
   onPlayAgain,
   onHome,
 }: GoodGameOverlayProps) {
+  const effectiveWinner: TeamId = winnerTeam ?? (teamAScore >= teamBScore ? 'A' : 'B');
+  const winnerName = effectiveWinner === 'A' ? teamAName : teamBName;
+  const winnerInitials = getWinnerInitials(winnerName);
+
   return (
     <motion.div
       className="good-game-overlay"
@@ -36,14 +53,37 @@ export function GoodGameOverlay({
       exit={{ clipPath: 'circle(0% at 50% 42%)', opacity: 0 }}
       transition={{ duration: 0.48, ease: [0.22, 1, 0.36, 1] }}
     >
-      <motion.h2
-        className="good-game-title"
-        initial={{ y: -16, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.14, type: 'spring', stiffness: 300, damping: 24 }}
-      >
-        {lang === 'ja' ? 'ナイスゲーム！' : 'Good game!'}
-      </motion.h2>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+        <motion.h2
+          className="good-game-title"
+          initial={{ y: -16, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.14, type: 'spring', stiffness: 300, damping: 24 }}
+        >
+          {lang === 'ja' ? 'ナイスゲーム！' : 'Good game!'}
+        </motion.h2>
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.2, duration: 0.25 }}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '4px 12px',
+            borderRadius: 999,
+            background: 'rgba(190, 242, 100, 0.16)',
+            border: '1px solid rgba(190, 242, 100, 0.48)',
+            color: '#bef264',
+            fontSize: '0.82rem',
+            fontWeight: 800,
+            letterSpacing: '0.03em',
+          }}
+        >
+          <Trophy size={13} />
+          <span>{lang === 'ja' ? `${winnerName} の勝利` : `${winnerName} Wins!`}</span>
+        </motion.div>
+      </div>
 
       {/* Circular spotlight with skyline + court + celebrating mascot */}
       <motion.div
@@ -70,6 +110,30 @@ export function GoodGameOverlay({
           {/* Subtle golden shachihoko accents on keep roof */}
           <circle cx="103" cy="27" r="1.4" fill="#fbbf24" />
           <circle cx="117" cy="27" r="1.4" fill="#fbbf24" />
+          {/* Winner circle badge at the peak of the castle */}
+          <g>
+            <circle cx="110" cy="28" r="18.5" fill="rgba(251, 191, 36, 0.2)" />
+            <circle
+              cx="110"
+              cy="28"
+              r="14.5"
+              fill={effectiveWinner === 'A' ? '#86efac' : '#fdba74'}
+              stroke="#fffbeb"
+              strokeWidth="2"
+            />
+            <text
+              x="110"
+              y="29.5"
+              textAnchor="middle"
+              dominantBaseline="central"
+              fill="#0f172a"
+              fontSize="11.5"
+              fontWeight="900"
+              letterSpacing="0.02em"
+            >
+              {winnerInitials}
+            </text>
+          </g>
           {/* Court floor */}
           <rect y="115" width="220" height="105" fill="#234873" />
           <g stroke="rgba(255,255,255,0.45)" strokeWidth="2">
@@ -81,27 +145,75 @@ export function GoodGameOverlay({
           </g>
         </svg>
 
-        <div style={{ position: 'relative', zIndex: 2, marginTop: 22 }}>
-          <PickleballMascot score={winnerScore} mood="celebrating" size={92} />
+        <div style={{ position: 'relative', zIndex: 2, marginTop: 18 }}>
+          <PickleballMascot score={winnerScore} mood="celebrating" size={112} />
         </div>
       </motion.div>
 
       {/* Score summary */}
       <div className="good-game-scores">
-        <div className="good-game-score-row">
+        <div
+          className="good-game-score-row"
+          style={{ opacity: effectiveWinner === 'A' ? 1 : 0.62 }}
+        >
           <div className="good-game-team">
             <span className="good-game-dot" style={{ background: '#86efac' }} />
             <span>{teamAName}</span>
+            {effectiveWinner === 'A' && (
+              <span
+                style={{
+                  fontSize: '0.66rem',
+                  fontWeight: 900,
+                  padding: '2px 7px',
+                  borderRadius: 999,
+                  background: 'rgba(190, 242, 100, 0.18)',
+                  border: '1px solid rgba(190, 242, 100, 0.5)',
+                  color: '#bef264',
+                  letterSpacing: '0.06em',
+                }}
+              >
+                {lang === 'ja' ? '勝利' : 'WIN'}
+              </span>
+            )}
           </div>
-          <span className="good-game-num">{teamAScore}</span>
+          <span
+            className="good-game-num"
+            style={{ color: effectiveWinner === 'A' ? '#bef264' : undefined }}
+          >
+            {teamAScore}
+          </span>
         </div>
         <div className="good-game-divider" />
-        <div className="good-game-score-row">
+        <div
+          className="good-game-score-row"
+          style={{ opacity: effectiveWinner === 'B' ? 1 : 0.62 }}
+        >
           <div className="good-game-team">
             <span className="good-game-dot" style={{ background: '#fdba74' }} />
             <span>{teamBName}</span>
+            {effectiveWinner === 'B' && (
+              <span
+                style={{
+                  fontSize: '0.66rem',
+                  fontWeight: 900,
+                  padding: '2px 7px',
+                  borderRadius: 999,
+                  background: 'rgba(190, 242, 100, 0.18)',
+                  border: '1px solid rgba(190, 242, 100, 0.5)',
+                  color: '#bef264',
+                  letterSpacing: '0.06em',
+                }}
+              >
+                {lang === 'ja' ? '勝利' : 'WIN'}
+              </span>
+            )}
           </div>
-          <span className="good-game-num">{teamBScore}</span>
+          <span
+            className="good-game-num"
+            style={{ color: effectiveWinner === 'B' ? '#bef264' : undefined }}
+          >
+            {teamBScore}
+          </span>
         </div>
       </div>
 

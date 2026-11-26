@@ -499,7 +499,7 @@ export function SideoutCourtCanvas({
                     score={servingScore}
                     mood={mascotMood}
                     facing={tok.side === 'left' ? 'right' : 'left'}
-                    size={tok.half === 'top' ? 65 : 75}
+                    size={tok.half === 'top' ? 79 : 91}
                     showShadow={false}
                   />
                 </div>

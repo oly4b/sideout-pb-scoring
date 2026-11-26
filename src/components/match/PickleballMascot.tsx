@@ -40,7 +40,7 @@ export function PickleballMascot({
   }, [score]);
 
   const bodyBounce = isCelebrating
-    ? { y: [0, -9, 0], rotate: 0 }
+    ? { y: [0, -14, 0], rotate: 0 }
     : isWalking
       ? { y: [0, -2, 0], rotate: [-1, 1, -1] }
       : isScoring
@@ -48,7 +48,7 @@ export function PickleballMascot({
         : { y: [0, -2, 0], rotate: 0 };
 
   const bodyTransition = isCelebrating
-    ? { duration: 0.8, repeat: Infinity, ease: 'easeInOut' as const }
+    ? { duration: 0.72, repeat: Infinity, ease: 'easeInOut' as const }
     : isWalking
       ? { duration: 0.52, repeat: Infinity, ease: 'easeInOut' as const }
       : isScoring
@@ -102,7 +102,7 @@ export function PickleballMascot({
         <motion.div
           animate={
             isCelebrating
-              ? { scaleX: [1.04, 0.78, 1.04], opacity: [0.42, 0.24, 0.42] }
+              ? { scaleX: [1.05, 0.65, 1.05], opacity: [0.44, 0.2, 0.44] }
               : { scaleX: [1, 0.94, 1], opacity: [0.36, 0.3, 0.36] }
           }
           transition={bodyTransition}
@@ -164,16 +164,20 @@ export function PickleballMascot({
         {/* Left leg & sneaker */}
         <motion.g
           animate={
-            isWalking
-              ? { y: [0, -1.5, 0, 0, 0], rotate: [0, -7, 0, 7, 0] }
-              : { y: 0, rotate: 0 }
+            isCelebrating
+              ? { y: [0, -3, 0], rotate: [4, 24, 4] }
+              : isWalking
+                ? { y: [0, -1.5, 0, 0, 0], rotate: [0, -7, 0, 7, 0] }
+                : { y: 0, rotate: 0 }
           }
           transition={
-            isWalking
-              ? { duration: 0.52, repeat: Infinity, ease: 'easeInOut' }
-              : { duration: 0.2, ease: 'easeOut' }
+            isCelebrating
+              ? { duration: 0.72, repeat: Infinity, ease: 'easeInOut' }
+              : isWalking
+                ? { duration: 0.52, repeat: Infinity, ease: 'easeInOut' }
+                : { duration: 0.2, ease: 'easeOut' }
           }
-          style={{ transformOrigin: '44px 98px' }}
+          style={{ transformOrigin: '44px 98px', transformBox: 'view-box' }}
         >
           <path d="M44 98 L42 113" stroke="#1e293b" strokeWidth="5.5" strokeLinecap="round" />
           <ellipse cx="39" cy="116" rx="10" ry="5.5" fill="#0f172a" />
@@ -183,16 +187,20 @@ export function PickleballMascot({
         {/* Right leg & sneaker */}
         <motion.g
           animate={
-            isWalking
-              ? { y: [0, 0, 0, -1.5, 0], rotate: [0, 7, 0, -7, 0] }
-              : { y: 0, rotate: 0 }
+            isCelebrating
+              ? { y: [0, -3, 0], rotate: [-4, -24, -4] }
+              : isWalking
+                ? { y: [0, 0, 0, -1.5, 0], rotate: [0, 7, 0, -7, 0] }
+                : { y: 0, rotate: 0 }
           }
           transition={
-            isWalking
-              ? { duration: 0.52, repeat: Infinity, ease: 'easeInOut' }
-              : { duration: 0.2, ease: 'easeOut' }
+            isCelebrating
+              ? { duration: 0.72, repeat: Infinity, ease: 'easeInOut' }
+              : isWalking
+                ? { duration: 0.52, repeat: Infinity, ease: 'easeInOut' }
+                : { duration: 0.2, ease: 'easeOut' }
           }
-          style={{ transformOrigin: '72px 98px' }}
+          style={{ transformOrigin: '72px 98px', transformBox: 'view-box' }}
         >
           <path d="M72 98 L74 113" stroke="#1e293b" strokeWidth="5.5" strokeLinecap="round" />
           <ellipse cx="77" cy="116" rx="10" ry="5.5" fill="#0f172a" />
@@ -203,7 +211,7 @@ export function PickleballMascot({
         <motion.g
           animate={{ rotate: [-5, 7, -5] }}
           transition={{ duration: isCelebrating ? 0.45 : 1.4, repeat: Infinity, ease: 'easeInOut' }}
-          style={{ transformOrigin: '24px 43px' }}
+          style={{ transformOrigin: '24px 43px', transformBox: 'view-box' }}
         >
           <path
             d="M25 41 C12 37, 5 44, 1 50 C9 49, 18 46, 25 45 Z"
@@ -230,8 +238,30 @@ export function PickleballMascot({
           strokeWidth="1.4"
           animate={{ rotate: [-3, 4, -3] }}
           transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-          style={{ transformOrigin: '59px 20px' }}
+          style={{ transformOrigin: '59px 20px', transformBox: 'view-box' }}
         />
+
+        {/* Left arm (behind body so shoulder anchors cleanly at 20,68) */}
+        <g transform="translate(20, 68)">
+          <motion.g
+            animate={
+              isCelebrating
+                ? { rotate: [28, 48, 28] }
+                : isScoring
+                  ? { rotate: [-25, -45, -20, -25] }
+                  : { rotate: [-32, -25, -32] }
+            }
+            transition={{
+              duration: isCelebrating ? 0.72 : isScoring ? 0.35 : 2.1,
+              repeat: isScoring ? 0 : Infinity,
+              ease: 'easeInOut',
+            }}
+            style={{ originX: 1, originY: 0.5 }}
+          >
+            <path d="M2 0 Q-7 1 -18 0" stroke="#1e293b" strokeWidth="4.6" strokeLinecap="round" fill="none" />
+            <circle cx="-18" cy="0" r="2.8" fill="#1e293b" />
+          </motion.g>
+        </g>
 
         {/* Peach body with signature top cleft and soft tapered bottom */}
         <path
@@ -330,81 +360,63 @@ export function PickleballMascot({
           </g>
         )}
 
-        {/* Left arm */}
-        <motion.g
-          animate={
-            isCelebrating
-              ? { rotate: [14, -18, 14] }
-              : isScoring
-                ? { rotate: [0, 18, -4, 0] }
-                : { rotate: [3, -4, 3] }
-          }
-          transition={{
-            duration: isCelebrating ? 0.55 : isScoring ? 0.35 : 2.1,
-            repeat: isScoring ? 0 : Infinity,
-            ease: 'easeInOut',
-          }}
-          style={{ transformOrigin: '23px 70px' }}
-        >
-          <path d="M23 70 Q15 74 13 81" stroke="#1e293b" strokeWidth="4.6" strokeLinecap="round" fill="none" />
-          <circle cx="13" cy="81" r="2.8" fill="#1e293b" />
-        </motion.g>
+        {/* Right arm holding pickleball sphere in front, anchored at 96,68 */}
+        <g transform="translate(96, 68)">
+          <motion.g
+            animate={
+              isCelebrating
+                ? { rotate: [-28, -48, -28] }
+                : isScoring
+                  ? { rotate: [-36, -58, -28, -36] }
+                  : { rotate: [-42, -34, -42] }
+            }
+            transition={{
+              duration: isCelebrating ? 0.72 : isScoring ? 0.35 : 2.1,
+              repeat: isScoring ? 0 : Infinity,
+              ease: 'easeInOut',
+            }}
+            style={{ originX: 0, originY: 0.5 }}
+          >
+            <path d="M-2 0 Q7 -1 15 0" stroke="#1e293b" strokeWidth="4.6" strokeLinecap="round" fill="none" />
+            {/* Hand gripping ball (drawn behind the ball so it doesn't poke through) */}
+            <circle cx="15" cy="0" r="2.8" fill="#1e293b" />
+            {/* Pickleball sphere (centered at y=0 so originY=0.5 aligns exactly with shoulder 0,0) */}
+            <circle
+              cx="23.5"
+              cy="0"
+              r="10.5"
+              fill="url(#peach-pickleball-grad)"
+              stroke="#1e293b"
+              strokeWidth="1.8"
+            />
+            {/* Subtle sphere highlight */}
+            <ellipse
+              cx="20"
+              cy="-5"
+              rx="3.4"
+              ry="2"
+              transform="rotate(-25 20 -5)"
+              fill="rgba(255, 255, 255, 0.36)"
+            />
+            {/* Shadowed pickleball holes */}
+            <g>
+              <circle cx="23" cy="0.5" r="2.1" fill="#1a2e05" opacity="0.72" />
+              <circle cx="23.4" cy="0.9" r="1.4" fill="#0f172a" opacity="0.45" />
 
-        {/* Right arm holding pickleball sphere with shadowed holes */}
-        <motion.g
-          animate={
-            isCelebrating
-              ? { rotate: [-14, 18, -14] }
-              : isScoring
-                ? { rotate: [0, -24, 6, 0] }
-                : { rotate: [-3, 5, -3] }
-          }
-          transition={{
-            duration: isCelebrating ? 0.55 : isScoring ? 0.35 : 2.1,
-            repeat: isScoring ? 0 : Infinity,
-            ease: 'easeInOut',
-          }}
-          style={{ transformOrigin: '93px 70px' }}
-        >
-          <path d="M93 70 Q100 66 102 58" stroke="#1e293b" strokeWidth="4.6" strokeLinecap="round" fill="none" />
-          {/* Pickleball sphere */}
-          <circle
-            cx="106"
-            cy="50"
-            r="10.5"
-            fill="url(#peach-pickleball-grad)"
-            stroke="#1e293b"
-            strokeWidth="1.8"
-          />
-          {/* Subtle sphere highlight */}
-          <ellipse
-            cx="102.5"
-            cy="45"
-            rx="3.4"
-            ry="2"
-            transform="rotate(-25 102.5 45)"
-            fill="rgba(255, 255, 255, 0.36)"
-          />
-          {/* Shadowed pickleball holes */}
-          <g>
-            <circle cx="105.5" cy="50.5" r="2.1" fill="#1a2e05" opacity="0.72" />
-            <circle cx="105.9" cy="50.9" r="1.4" fill="#0f172a" opacity="0.45" />
+              <ellipse cx="18" cy="-2.5" rx="1.6" ry="1.9" fill="#1a2e05" opacity="0.68" />
+              <ellipse cx="18.4" cy="-2.1" rx="1.0" ry="1.2" fill="#0f172a" opacity="0.4" />
 
-            <ellipse cx="100.5" cy="47.5" rx="1.6" ry="1.9" fill="#1a2e05" opacity="0.68" />
-            <ellipse cx="100.9" cy="47.9" rx="1.0" ry="1.2" fill="#0f172a" opacity="0.4" />
+              <ellipse cx="28.3" cy="-3.5" rx="1.5" ry="1.8" fill="#1a2e05" opacity="0.74" />
+              <ellipse cx="28.6" cy="-3.1" rx="0.95" ry="1.1" fill="#0f172a" opacity="0.45" />
 
-            <ellipse cx="110.8" cy="46.5" rx="1.5" ry="1.8" fill="#1a2e05" opacity="0.74" />
-            <ellipse cx="111.1" cy="46.9" rx="0.95" ry="1.1" fill="#0f172a" opacity="0.45" />
+              <ellipse cx="18.7" cy="5.2" rx="1.8" ry="1.5" fill="#1a2e05" opacity="0.72" />
+              <ellipse cx="19" cy="5.5" rx="1.1" ry="0.95" fill="#0f172a" opacity="0.45" />
 
-            <ellipse cx="101.2" cy="55.2" rx="1.8" ry="1.5" fill="#1a2e05" opacity="0.72" />
-            <ellipse cx="101.5" cy="55.5" rx="1.1" ry="0.95" fill="#0f172a" opacity="0.45" />
-
-            <ellipse cx="110.6" cy="54.8" rx="1.6" ry="1.5" fill="#1a2e05" opacity="0.76" />
-            <ellipse cx="110.9" cy="55.1" rx="1.0" ry="0.95" fill="#0f172a" opacity="0.48" />
-          </g>
-          {/* Hand gripping ball */}
-          <circle cx="102" cy="58" r="2.8" fill="#1e293b" />
-        </motion.g>
+              <ellipse cx="28.1" cy="4.8" rx="1.6" ry="1.5" fill="#1a2e05" opacity="0.76" />
+              <ellipse cx="28.4" cy="5.1" rx="1.0" ry="0.95" fill="#0f172a" opacity="0.48" />
+            </g>
+          </motion.g>
+        </g>
         </motion.svg>
       </div>
     </div>

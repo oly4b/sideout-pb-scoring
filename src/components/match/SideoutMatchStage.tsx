@@ -403,6 +403,7 @@ export function SideoutMatchStage({
         {liveState.winnerTeam && (
           <GoodGameOverlay
             lang={lang}
+            winnerTeam={liveState.winnerTeam}
             teamAName={activeMatch.team_a_name}
             teamBName={activeMatch.team_b_name}
             teamAScore={liveState.teamAScore}
