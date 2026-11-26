@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DatabaseStatus, Match, Player, Session } from '../shared/types';
+import { VENUES } from '../shared/venues';
 import { DatabaseView } from './components/DatabaseView';
 import { HistoryView } from './components/HistoryView';
 import { PlayersView } from './components/PlayersView';
@@ -117,6 +118,19 @@ export default function App() {
     () => matches.find((m) => m.id === activeMatchId) ?? null,
     [matches, activeMatchId]
   );
+
+  const activeMatchSession = useMemo(
+    () => (activeMatch?.session_id ? sessions.find((s) => s.id === activeMatch.session_id) : null),
+    [activeMatch?.session_id, sessions]
+  );
+
+  const activeMatchIsOutdoor = useMemo(() => {
+    const loc = activeMatchSession?.location?.trim();
+    if (!loc) return false;
+    return VENUES.some(
+      (v) => v.courtType === 'outdoor' && (loc.includes(v.shortName) || loc.includes(v.fullName))
+    );
+  }, [activeMatchSession?.location]);
 
   const inProgressMatches = useMemo(
     () => matches.filter((m) => m.status === 'in_progress'),
@@ -384,6 +398,7 @@ export default function App() {
                 matches={matches}
                 activeMatch={activeMatch}
                 inProgressMatches={inProgressMatches}
+                defaultAutoSwitchEnds={activeMatchIsOutdoor}
                 onSelectMatch={(m) => setActiveMatchId(m?.id ?? null)}
                 onMatchUpdated={handleMatchUpdated}
                 onBackToSession={handleBackToSession}

@@ -119,6 +119,7 @@ export function SessionsView({
   const [scoringMode, setScoringMode] = useState<ScoringMode>('side_out');
   const [targetScore, setTargetScore] = useState<TargetScore>(11);
   const [winByTwo, setWinByTwo] = useState(true);
+  const [autoSwitchEnds, setAutoSwitchEnds] = useState(false);
   const [checkedInIds, setCheckedInIds] = useState<string[]>([]);
   const [quickPlayerName, setQuickPlayerName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -187,6 +188,7 @@ export function SessionsView({
       const isKnownVenue = VENUES.some((v) => v.id === booked.venue_id);
       setVenueChoice(isKnownVenue ? booked.venue_id : 'other');
       setLocation(booked.venue_full_name);
+      setAutoSwitchEnds(booked.court_type === 'outdoor');
       setFormat('rotating_partners');
       setCourtsCount(Math.max(1, Math.min(3, Math.floor(Math.max(4, resolvedIds.length) / 4))));
       setCheckedInIds(resolvedIds);
@@ -228,6 +230,7 @@ export function SessionsView({
     const defaultVenue = VENUES.find((v) => v.id === 'mabi') ?? VENUES[0];
     setVenueChoice(defaultVenue.id);
     setLocation(defaultVenue.fullName);
+    setAutoSwitchEnds(defaultVenue.courtType === 'outdoor');
     setFormat('rotating_partners');
     setCourtsCount(Math.max(1, Math.min(3, Math.floor(players.length / 4))));
     setCheckedInIds(players.slice(0, Math.min(8, players.length)).map((p) => p.id));
@@ -970,9 +973,11 @@ export function SessionsView({
                     setVenueChoice(nextId);
                     if (nextId === 'other') {
                       setLocation('');
+                      setAutoSwitchEnds(false);
                     } else {
                       const found = VENUES.find((v) => v.id === nextId);
                       setLocation(found?.fullName ?? '');
+                      setAutoSwitchEnds(found?.courtType === 'outdoor');
                     }
                   }}
                 >
@@ -1036,10 +1041,16 @@ export function SessionsView({
               </div>
             </div>
 
-            <div className="grid-3">
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                gap: 10,
+              }}
+            >
               <div className="field-group">
                 <label className="field-label" htmlFor="sess-courts">
-                  Courts
+                  {lang === 'ja' ? 'コート数' : 'Courts'}
                 </label>
                 <select
                   id="sess-courts"
@@ -1049,14 +1060,14 @@ export function SessionsView({
                 >
                   {[1, 2, 3, 4, 5, 6].map((n) => (
                     <option key={n} value={n}>
-                      {n} {n === 1 ? 'Court' : 'Courts'}
+                      {lang === 'ja' ? `${n} コート` : `${n} ${n === 1 ? 'Court' : 'Courts'}`}
                     </option>
                   ))}
                 </select>
               </div>
               <div className="field-group">
                 <label className="field-label" htmlFor="sess-scoring">
-                  Scoring
+                  {lang === 'ja' ? '採点方式' : 'Scoring'}
                 </label>
                 <select
                   id="sess-scoring"
@@ -1064,13 +1075,17 @@ export function SessionsView({
                   value={scoringMode}
                   onChange={(e) => setScoringMode(e.target.value as ScoringMode)}
                 >
-                  <option value="side_out">Side-Out (0-0-2)</option>
-                  <option value="rally">Rally Scoring</option>
+                  <option value="side_out">
+                    {lang === 'ja' ? 'サイドアウト' : 'Side-Out (0-0-2)'}
+                  </option>
+                  <option value="rally">
+                    {lang === 'ja' ? 'ラリーポイント' : 'Rally Scoring'}
+                  </option>
                 </select>
               </div>
               <div className="field-group">
                 <label className="field-label" htmlFor="sess-target">
-                  Play To
+                  {lang === 'ja' ? '勝利点' : 'Play To'}
                 </label>
                 <select
                   id="sess-target"
@@ -1078,26 +1093,65 @@ export function SessionsView({
                   value={targetScore}
                   onChange={(e) => setTargetScore(Number(e.target.value) as TargetScore)}
                 >
-                  <option value={11}>11 pts</option>
-                  <option value={15}>15 pts</option>
-                  <option value={21}>21 pts</option>
+                  <option value={11}>{lang === 'ja' ? '11点' : '11 pts'}</option>
+                  <option value={15}>{lang === 'ja' ? '15点' : '15 pts'}</option>
+                  <option value={21}>{lang === 'ja' ? '21点' : '21 pts'}</option>
                 </select>
               </div>
             </div>
 
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.84rem', fontWeight: 700 }}>
-              <input
-                type="checkbox"
-                checked={winByTwo}
-                onChange={(e) => setWinByTwo(e.target.checked)}
-              />
-              {lang === 'ja' ? '2点差勝利ルール' : 'Require Win by 2'}
-            </label>
+            <div className="field-group">
+              <span className="field-label">{lang === 'ja' ? 'オプション' : 'Options'}</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={winByTwo}
+                  className={`btn btn-sm ${winByTwo ? 'btn-lime' : 'btn-secondary'}`}
+                  style={{ borderRadius: 999, minHeight: 34 }}
+                  onClick={() => setWinByTwo((v) => !v)}
+                >
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '999px',
+                      background: winByTwo ? '#0f172a' : 'var(--ink-muted)',
+                      opacity: winByTwo ? 0.85 : 0.45,
+                    }}
+                  />
+                  {lang === 'ja' ? '2点差勝利' : 'Win by 2'}
+                </button>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={autoSwitchEnds}
+                  className={`btn btn-sm ${autoSwitchEnds ? 'btn-lime' : 'btn-secondary'}`}
+                  style={{ borderRadius: 999, minHeight: 34 }}
+                  onClick={() => setAutoSwitchEnds((v) => !v)}
+                >
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '999px',
+                      background: autoSwitchEnds ? '#0f172a' : 'var(--ink-muted)',
+                      opacity: autoSwitchEnds ? 0.85 : 0.45,
+                    }}
+                  />
+                  {lang === 'ja'
+                    ? `折り返しでエンド交代 (${Math.ceil(targetScore / 2)})`
+                    : `Switch ends (${Math.ceil(targetScore / 2)})`}
+                </button>
+              </div>
+            </div>
 
             <div className="field-group">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span className="field-label">
-                  {lang === 'ja' ? '参加チェックイン' : 'Check-In Players'} ({checkedInIds.length} / min 4)
+                  {lang === 'ja'
+                    ? `参加チェックイン (${checkedInIds.length}名 / 最低4名)`
+                    : `Check-In Players (${checkedInIds.length} / min 4)`}
                 </span>
                 <button
                   type="button"
@@ -1108,7 +1162,13 @@ export function SessionsView({
                     )
                   }
                 >
-                  {checkedInIds.length === players.length ? 'Clear All' : 'Select All'}
+                  {checkedInIds.length === players.length
+                    ? lang === 'ja'
+                      ? 'すべて解除'
+                      : 'Clear All'
+                    : lang === 'ja'
+                      ? 'すべて選択'
+                      : 'Select All'}
                 </button>
               </div>
               <div className="player-chip-grid">
@@ -1155,7 +1215,7 @@ export function SessionsView({
                   className="btn btn-secondary btn-sm"
                   onClick={handleQuickAddPlayer}
                 >
-                  <Plus size={14} /> Add
+                  <Plus size={14} /> {lang === 'ja' ? '追加' : 'Add'}
                 </button>
               </div>
             </div>
@@ -1166,7 +1226,7 @@ export function SessionsView({
                 className="btn btn-secondary"
                 onClick={() => setShowCreateModal(false)}
               >
-                Cancel
+                {lang === 'ja' ? 'キャンセル' : 'Cancel'}
               </button>
               <button
                 type="button"

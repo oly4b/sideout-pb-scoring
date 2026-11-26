@@ -47,6 +47,7 @@ interface ScorekeeperViewProps {
   matches: Match[];
   activeMatch: Match | null;
   inProgressMatches: Match[];
+  defaultAutoSwitchEnds?: boolean;
   onSelectMatch: (match: Match | null) => void;
   onMatchUpdated: (match: Match) => void;
   onBackToSession?: (sessionId: string) => void;
@@ -65,6 +66,7 @@ export function ScorekeeperView({
   matches,
   activeMatch,
   inProgressMatches,
+  defaultAutoSwitchEnds = false,
   onSelectMatch,
   onMatchUpdated,
   onBackToSession,
@@ -83,7 +85,7 @@ export function ScorekeeperView({
   const [scoringMode, setScoringMode] = useState<ScoringMode>('side_out');
   const [targetScore, setTargetScore] = useState<TargetScore>(11);
   const [winByTwo, setWinByTwo] = useState(true);
-  const [autoSwitchEnds, setAutoSwitchEnds] = useState(true);
+  const [autoSwitchEnds, setAutoSwitchEnds] = useState(false);
   const [teamA1, setTeamA1] = useState<string>(players[0]?.id ?? '');
   const [teamA2, setTeamA2] = useState<string>(players[1]?.id ?? '');
   const [teamB1, setTeamB1] = useState<string>(players[2]?.id ?? '');
@@ -131,6 +133,9 @@ export function ScorekeeperView({
       });
 
     setLiveState(hydrated);
+    if (activeMatch.session_id) {
+      setAutoSwitchEnds(defaultAutoSwitchEnds);
+    }
 
     if (activeMatch.status === 'completed') {
       setElapsedSeconds(activeMatch.duration_seconds || 0);
@@ -594,14 +599,14 @@ export function ScorekeeperView({
             style={{
               display: 'flex',
               flexWrap: 'wrap',
-              gap: 16,
-              alignItems: 'center',
+              gap: 14,
+              alignItems: 'flex-end',
               justifyContent: 'space-between',
-              paddingTop: 10,
+              paddingTop: 12,
               borderTop: '1px solid var(--border-subtle)',
             }}
           >
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-end' }}>
               <div className="field-group">
                 <span className="field-label">{t.scoringFormat}</span>
                 <div className="segmented">
@@ -638,49 +643,57 @@ export function ScorekeeperView({
                 </div>
               </div>
 
-              <label
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 7,
-                  fontSize: '0.84rem',
-                  fontWeight: 700,
-                  marginTop: 16,
-                  cursor: 'pointer',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={winByTwo}
-                  onChange={(e) => setWinByTwo(e.target.checked)}
-                />
-                {t.winByTwo}
-              </label>
+              <div className="field-group">
+                <span className="field-label">{lang === 'ja' ? 'オプション' : 'Options'}</span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={winByTwo}
+                    className={`btn btn-sm ${winByTwo ? 'btn-lime' : 'btn-secondary'}`}
+                    style={{ borderRadius: 999, minHeight: 36 }}
+                    onClick={() => setWinByTwo((v) => !v)}
+                  >
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '999px',
+                        background: winByTwo ? '#0f172a' : 'var(--ink-muted)',
+                        opacity: winByTwo ? 0.85 : 0.45,
+                      }}
+                    />
+                    {t.winByTwo}
+                  </button>
 
-              <label
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 7,
-                  fontSize: '0.84rem',
-                  fontWeight: 700,
-                  marginTop: 16,
-                  cursor: 'pointer',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={autoSwitchEnds}
-                  onChange={(e) => setAutoSwitchEnds(e.target.checked)}
-                />
-                {t.autoSwitchEnds} ({Math.ceil(targetScore / 2)})
-              </label>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={autoSwitchEnds}
+                    className={`btn btn-sm ${autoSwitchEnds ? 'btn-lime' : 'btn-secondary'}`}
+                    style={{ borderRadius: 999, minHeight: 36 }}
+                    onClick={() => setAutoSwitchEnds((v) => !v)}
+                  >
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '999px',
+                        background: autoSwitchEnds ? '#0f172a' : 'var(--ink-muted)',
+                        opacity: autoSwitchEnds ? 0.85 : 0.45,
+                      }}
+                    />
+                    {t.autoSwitchEnds} ({Math.ceil(targetScore / 2)})
+                  </button>
+                </div>
+              </div>
             </div>
 
             <button
               type="button"
               id="btn-start-quick-match"
               className="btn btn-lime"
+              style={{ minHeight: 38 }}
               onClick={handleStartQuickMatch}
               disabled={
                 creating ||
