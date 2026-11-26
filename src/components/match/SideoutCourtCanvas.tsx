@@ -29,21 +29,21 @@ function getBoxCoords(half: 'top' | 'bottom', side: CourtSide): CourtCoords {
   if (half === 'bottom') {
     return side === 'left' ? { xPct: 33, yPct: 79 } : { xPct: 67, yPct: 79 };
   }
-  return side === 'right' ? { xPct: 37, yPct: 19 } : { xPct: 63, yPct: 19 };
+  return side === 'right' ? { xPct: 35, yPct: 19 } : { xPct: 65, yPct: 19 };
 }
 
 function getBoxPolygonPoints(half: 'top' | 'bottom', side: CourtSide): string {
   if (half === 'bottom') {
-    // Bottom half: net (74..426 at y=264), NVZ (60..440 at y=346), baseline (36..464 at y=518)
+    // Bottom half: NVZ (59.4..440.6 at y=346), baseline (42..458 at y=518)
     return side === 'left'
-      ? '60,346 250,346 250,518 36,518'
-      : '250,346 440,346 464,518 250,518';
+      ? '59.4,346 250,346 250,518 42,518'
+      : '250,346 440.6,346 458,518 250,518';
   }
-  // Top half: baseline (112..388 at y=24), NVZ (86..414 at y=186)
+  // Top half: baseline (92..408 at y=24), NVZ (75.6..424.4 at y=186)
   // Top half facing down: player's right = viewer's left, player's left = viewer's right
   return side === 'right'
-    ? '112,24 250,24 250,186 86,186'
-    : '250,24 388,24 414,186 250,186';
+    ? '92,24 250,24 250,186 75.6,186'
+    : '250,24 408,24 424.4,186 250,186';
 }
 
 function getInitials(label: string): string {
@@ -173,12 +173,20 @@ export function SideoutCourtCanvas({
   const endCoords = getBoxCoords(receiverHalf, receiverSide);
   const serverBoxPoints = getBoxPolygonPoints(serverHalf, serverSide);
 
-  const sx = (startCoords.xPct / 100) * 500;
-  const sy = (startCoords.yPct / 100) * 540;
-  const ex = (endCoords.xPct / 100) * 500;
-  const ey = (endCoords.yPct / 100) * 540;
+  const sxFull = (startCoords.xPct / 100) * 500;
+  const syFull = (startCoords.yPct / 100) * 540;
+  const exFull = (endCoords.xPct / 100) * 500;
+  const eyFull = (endCoords.yPct / 100) * 540;
+
+  const yTop = 146; // ~25% past top NVZ (186 -> 24)
+  const yBot = 389; // ~25% past bottom NVZ (346 -> 518)
+  const sy = serverHalf === 'top' ? yTop : yBot;
+  const ey = receiverHalf === 'top' ? yTop : yBot;
+  const dyFull = eyFull - syFull || 1;
+  const sx = sxFull + (exFull - sxFull) * ((sy - syFull) / dyFull);
+  const ex = sxFull + (exFull - sxFull) * ((ey - syFull) / dyFull);
   const cx = (sx + ex) / 2;
-  const cy = (sy + ey) / 2 - 26;
+  const cy = (sy + ey) / 2 - 58;
 
   const teamAOnFire = liveState.teamAScore >= Math.max(1, liveState.targetScore - 2);
   const teamBOnFire = liveState.teamBScore >= Math.max(1, liveState.targetScore - 2);
@@ -218,20 +226,25 @@ export function SideoutCourtCanvas({
             <stop offset="100%" stopColor="#7f372c" />
           </linearGradient>
           <clipPath id="court-clip">
-            <polygon points="112,24 388,24 464,518 36,518" />
+            <polygon points="92,24 408,24 458,518 42,518" />
           </clipPath>
         </defs>
 
-        <polygon points="108,28 392,28 470,524 30,524" fill="rgba(2, 6, 23, 0.45)" />
+        <polygon points="88,28 412,28 464,524 36,524" fill="rgba(2, 6, 23, 0.45)" />
         {/* Blue main court surface */}
-        <polygon points="112,24 388,24 464,518 36,518" fill="url(#court-blue-grad)" />
+        <polygon points="92,24 408,24 458,518 42,518" fill="url(#court-blue-grad)" />
         {/* Red kitchen (NVZ) */}
-        <polygon points="86,186 414,186 440,346 60,346" fill="url(#court-kitchen-grad)" />
+        <polygon
+          points="75.6,186 424.4,186 440.6,346 59.4,346"
+          fill="url(#court-kitchen-grad)"
+          clipPath="url(#court-clip)"
+        />
 
         {/* Active serving box highlight */}
         <motion.polygon
           key={serverBoxPoints}
           points={serverBoxPoints}
+          clipPath="url(#court-clip)"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.25 }}
@@ -248,50 +261,54 @@ export function SideoutCourtCanvas({
 
         {/* Court Lines */}
         <g stroke="rgba(255, 255, 255, 0.85)" strokeWidth="2.5" fill="none">
-          <polygon points="112,24 388,24 464,518 36,518" />
-          <line x1="86" y1="186" x2="414" y2="186" />
-          <line x1="60" y1="346" x2="440" y2="346" />
-          <line x1="250" y1="24" x2="250" y2="186" />
-          <line x1="250" y1="346" x2="250" y2="518" />
+          <g clipPath="url(#court-clip)">
+            <line x1="75.6" y1="186" x2="424.4" y2="186" />
+            <line x1="59.4" y1="346" x2="440.6" y2="346" />
+            <line x1="250" y1="24" x2="250" y2="186" />
+            <line x1="250" y1="346" x2="250" y2="518" />
+          </g>
+          <polygon points="92,24 408,24 458,518 42,518" />
         </g>
 
-        {/* Serve Trajectory Arc */}
-        <motion.path
-          key={`${sx}-${sy}-${ex}-${ey}`}
-          d={`M ${sx} ${sy} Q ${cx} ${cy} ${ex} ${ey}`}
-          fill="none"
-          stroke="rgba(255, 255, 255, 0.52)"
-          strokeWidth="2.2"
-          strokeDasharray="4 6"
-          initial={{ pathLength: 0, opacity: 0.2 }}
-          animate={{ pathLength: 1, opacity: 0.85 }}
-          transition={{ duration: 0.42, ease: 'easeOut' }}
-        />
-
-        {/* 3D Net */}
+        {/* 3D Net (~5 deg steeper bird's-eye angle) */}
         <g>
-          <line x1="68" y1="270" x2="432" y2="270" stroke="rgba(2, 6, 23, 0.4)" strokeWidth="6" />
+          <line x1="60" y1="268" x2="440" y2="268" stroke="rgba(2, 6, 23, 0.4)" strokeWidth="5" />
           <rect
-            x="66"
-            y="251"
-            width="368"
-            height="14"
+            x="58"
+            y="255"
+            width="384"
+            height="10"
             fill="rgba(15, 23, 42, 0.55)"
             stroke="rgba(255,255,255,0.22)"
             strokeWidth="1"
           />
           <line
-            x1="64"
-            y1="251"
-            x2="436"
-            y2="251"
+            x1="56"
+            y1="255"
+            x2="444"
+            y2="255"
             stroke="#f8fafc"
-            strokeWidth="3.5"
+            strokeWidth="3.2"
             strokeLinecap="round"
           />
-          <rect x="61" y="246" width="6" height="22" rx="2" fill="#cbd5e1" />
-          <rect x="433" y="246" width="6" height="22" rx="2" fill="#cbd5e1" />
+          <rect x="53" y="251" width="6" height="17" rx="2" fill="#cbd5e1" />
+          <rect x="441" y="251" width="6" height="17" rx="2" fill="#cbd5e1" />
         </g>
+
+        {/* Serve Trajectory Dashed Arc (25% past NVZ, arcing above the net) */}
+        <motion.path
+          key={`${sx.toFixed(1)}-${sy}-${ex.toFixed(1)}-${ey}`}
+          d={`M ${sx} ${sy} Q ${cx} ${cy} ${ex} ${ey}`}
+          fill="none"
+          stroke="#bef264"
+          strokeWidth="2.6"
+          strokeLinecap="butt"
+          strokeDasharray="8 6"
+          style={{ filter: 'drop-shadow(0 1px 2px rgba(2, 6, 23, 0.8))' }}
+          initial={{ opacity: 0.2 }}
+          animate={{ opacity: 0.96 }}
+          transition={{ duration: 0.3, ease: 'easeOut' }}
+        />
       </svg>
 
       {/* Interactive Top & Bottom Court Half Tap Targets */}
@@ -447,10 +464,10 @@ export function SideoutCourtCanvas({
           >
             {tok.isServer ? (
               <motion.div
-                key={`server-pop-${liveState.servingTeam}-${liveState.serverNumber}`}
-                initial={{ scale: 0.72, y: -10, opacity: 0.7 }}
+                key="server-mascot"
+                initial={{ scale: 0.88, y: -4, opacity: 0.85 }}
                 animate={{ scale: 1, y: 0, opacity: 1 }}
-                transition={{ type: 'spring', stiffness: 360, damping: 20 }}
+                transition={{ duration: 0.22, ease: 'easeOut' }}
                 style={{
                   position: 'relative',
                   display: 'flex',
@@ -477,21 +494,24 @@ export function SideoutCourtCanvas({
                   />
                 )}
 
-                <PickleballMascot
-                  score={servingScore}
-                  mood={mascotMood}
-                  facing={tok.side === 'left' ? 'right' : 'left'}
-                  size={tok.half === 'top' ? 52 : 60}
-                  showShadow={false}
-                />
+                <div style={{ position: 'relative', zIndex: 2 }}>
+                  <PickleballMascot
+                    score={servingScore}
+                    mood={mascotMood}
+                    facing={tok.side === 'left' ? 'right' : 'left'}
+                    size={tok.half === 'top' ? 65 : 75}
+                    showShadow={false}
+                  />
+                </div>
 
-                {/* Hovering perspective circle loading ring below server */}
+                {/* Hovering perspective circle loading ring around server's feet */}
                 <div
                   style={{
                     position: 'relative',
-                    width: tok.half === 'top' ? 68 : 78,
-                    height: tok.half === 'top' ? 24 : 28,
-                    marginTop: -10,
+                    width: tok.half === 'top' ? 76 : 88,
+                    height: tok.half === 'top' ? 26 : 30,
+                    marginTop: tok.half === 'top' ? -24 : -28,
+                    zIndex: 1,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -527,7 +547,7 @@ export function SideoutCourtCanvas({
                       strokeLinecap="round"
                       strokeDasharray="48 130"
                       animate={{ strokeDashoffset: [0, -178] }}
-                      transition={{ duration: 2.2, repeat: Infinity, ease: 'linear' }}
+                      transition={{ duration: 5.5, repeat: Infinity, ease: 'linear' }}
                     />
                   </svg>
                 </div>
@@ -566,19 +586,44 @@ export function SideoutCourtCanvas({
                   }}
                 >
                   {tok.isActiveReceiver && (
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 9, repeat: Infinity, ease: 'linear' }}
+                    <svg
+                      viewBox="0 0 40 40"
                       style={{
                         position: 'absolute',
-                        inset: -6,
-                        borderRadius: '999px',
-                        border: '2px dashed rgba(255, 255, 255, 0.72)',
+                        inset: -4,
+                        width: 'calc(100% + 8px)',
+                        height: 'calc(100% + 8px)',
+                        pointerEvents: 'none',
                       }}
-                    />
+                      aria-hidden="true"
+                    >
+                      <circle
+                        cx="20"
+                        cy="20"
+                        r="18"
+                        fill="none"
+                        stroke="rgba(255, 255, 255, 0.24)"
+                        strokeWidth="1.5"
+                        strokeDasharray="3 4"
+                      />
+                      <motion.circle
+                        cx="20"
+                        cy="20"
+                        r="18"
+                        fill="none"
+                        stroke="#f8fafc"
+                        strokeWidth="2.4"
+                        strokeLinecap="round"
+                        strokeDasharray="32 81"
+                        animate={{ strokeDashoffset: [0, -113] }}
+                        transition={{ duration: 5.5, repeat: Infinity, ease: 'linear' }}
+                      />
+                    </svg>
                   )}
                   <div
                     style={{
+                      position: 'relative',
+                      zIndex: 2,
                       width: 30,
                       height: 30,
                       borderRadius: '999px',

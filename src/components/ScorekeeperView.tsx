@@ -67,6 +67,41 @@ function formatDuration(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+const SCOREKEEPER_MATCHES_KEY = 'momodinks_scorekeeper_matches';
+
+function readScorekeeperMatches(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = window.localStorage.getItem(SCOREKEEPER_MATCHES_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed.filter((id) => typeof id === 'string')) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function isScorekeeperForMatch(matchId: string): boolean {
+  return readScorekeeperMatches().has(matchId);
+}
+
+function markScorekeeperForMatch(matchId: string, isScorekeeper: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const set = readScorekeeperMatches();
+    if (isScorekeeper) {
+      set.add(matchId);
+    } else {
+      set.delete(matchId);
+    }
+    // Keep only the most recent 50 match IDs
+    const trimmed = Array.from(set).slice(-50);
+    window.localStorage.setItem(SCOREKEEPER_MATCHES_KEY, JSON.stringify(trimmed));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 /** Live court/scoreboard scoring interface with quick-match setup, serialized persistence, and rally tagging. */
 export function ScorekeeperView({
   lang,
@@ -152,6 +187,11 @@ export function ScorekeeperView({
 
     setLiveState(hydrated);
     baseVersionRef.current = hydrated.version ?? hydrated.rallies.length;
+    const joinAsSpectator =
+      !isScorekeeperForMatch(activeMatch.id) &&
+      activeMatch.status === 'in_progress' &&
+      hydrated.rallies.length > 0;
+    setSpectatorMode(joinAsSpectator);
     if (activeMatch.session_id) {
       setAutoSwitchEnds(defaultAutoSwitchEnds);
     }
@@ -225,7 +265,34 @@ export function ScorekeeperView({
               table: 'matches',
               filter: `id=eq.${activeMatch.id}`,
             },
-            () => {
+            (payload) => {
+              if (cancelled || inFlightSaveRef.current || pendingSaveRef.current) return;
+              const row = payload.new as Partial<Match> | undefined;
+              const remoteLive = row?.live_state as LiveGameState | null | undefined;
+              if (remoteLive) {
+                const remoteVersion = remoteLive.version ?? remoteLive.rallies?.length ?? 0;
+                if (
+                  remoteVersion > baseVersionRef.current ||
+                  (row?.status === 'completed' && activeMatch.status !== 'completed')
+                ) {
+                  baseVersionRef.current = remoteVersion;
+                  setLiveState(remoteLive);
+                  onMatchUpdated({
+                    ...activeMatch,
+                    status: row?.status ?? activeMatch.status,
+                    team_a_score: row?.team_a_score ?? remoteLive.teamAScore,
+                    team_b_score: row?.team_b_score ?? remoteLive.teamBScore,
+                    winner_team:
+                      row?.winner_team !== undefined ? row.winner_team : remoteLive.winnerTeam,
+                    completed_at:
+                      row?.completed_at !== undefined ? row.completed_at : activeMatch.completed_at,
+                    duration_seconds: row?.duration_seconds ?? activeMatch.duration_seconds,
+                    live_state: remoteLive,
+                    rallies: remoteLive.rallies ?? activeMatch.rallies,
+                  });
+                }
+                return;
+              }
               void syncFromRemote();
             }
           )
@@ -315,12 +382,13 @@ export function ScorekeeperView({
       saveTimerRef.current = window.setTimeout(() => {
         saveTimerRef.current = null;
         void flushPendingSave();
-      }, 220);
+      }, 80);
     }
   };
 
   const handleRally = (winner: TeamId) => {
     if (!activeMatch || !liveState || liveState.winnerTeam || spectatorMode) return;
+    markScorekeeperForMatch(activeMatch.id, true);
     const next = recordRally(liveState, winner, activeMatch.id);
     setLiveState(next);
     if (soundEnabled) {
@@ -498,6 +566,7 @@ export function ScorekeeperView({
         team_b_name: teamBName,
         participants,
       });
+      markScorekeeperForMatch(created.id, true);
       onMatchUpdated(created);
       onSelectMatch(created);
     } catch (err) {
@@ -981,6 +1050,7 @@ export function ScorekeeperView({
             onClick={() => {
               const nextSpec = !spectatorMode;
               setSpectatorMode(nextSpec);
+              markScorekeeperForMatch(activeMatch.id, !nextSpec);
               if (nextSpec) setPendingTagSeq(null);
               onNotify(
                 lang === 'ja'
