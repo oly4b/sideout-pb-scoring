@@ -397,36 +397,3 @@ export function computeMomentum(rallies: RallyEvent[]): MomentumSummary {
 
   return { teamAPercent, teamBPercent, streakTeam, streakCount, lastFive };
 }
-
-export function buildVoiceAnnouncement(
-  prevState: LiveGameState,
-  nextState: LiveGameState,
-  teamAName: string,
-  teamBName: string
-): string {
-  if (nextState.winnerTeam) {
-    const winnerName = nextState.winnerTeam === 'A' ? teamAName : teamBName;
-    const winScore = Math.max(nextState.teamAScore, nextState.teamBScore);
-    const loseScore = Math.min(nextState.teamAScore, nextState.teamBScore);
-    return `Game over. ${winnerName} wins, ${winScore} to ${loseScore}.`;
-  }
-
-  const lastEvent = nextState.rallies[nextState.rallies.length - 1];
-  const prefix =
-    lastEvent?.event_type === 'side_out'
-      ? 'Side out. '
-      : lastEvent?.event_type === 'server_change'
-        ? 'Second server. '
-        : '';
-
-  const gamePointTeam = isGamePoint(nextState);
-  const suffix = gamePointTeam ? ' Game point.' : '';
-  const spokenScore = formatScoreCallout(nextState).replaceAll(' - ', ', ');
-
-  // Avoid duplicate wording if nothing changed
-  if (prevState.rallies.length === nextState.rallies.length) {
-    return spokenScore;
-  }
-
-  return `${prefix}${spokenScore}.${suffix}`;
-}

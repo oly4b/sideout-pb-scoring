@@ -1,12 +1,17 @@
 import {
+  Calendar,
   Check,
   CheckCircle2,
+  Clock,
   Crown,
+  ExternalLink,
   MapPin,
   Play,
   Plus,
+  RefreshCw,
   Shuffle,
   Sparkles,
+  Trash2,
   Trophy,
   Users,
   X,
@@ -16,6 +21,7 @@ import { computeStandings } from '../../shared/statsEngine';
 import type {
   Match,
   Player,
+  SchedulerBookedSession,
   ScoringMode,
   Session,
   SessionFormat,
@@ -99,6 +105,86 @@ export function SessionsView({
   const [checkedInIds, setCheckedInIds] = useState<string[]>([]);
   const [quickPlayerName, setQuickPlayerName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [schedulerSessions, setSchedulerSessions] = useState<SchedulerBookedSession[]>([]);
+  const [syncingScheduler, setSyncingScheduler] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Session | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+
+  const loadSchedulerUpcoming = async () => {
+    try {
+      setSyncingScheduler(true);
+      const data = await api.getSchedulerUpcoming();
+      if (data.connected) {
+        setSchedulerSessions(data.sessions);
+      }
+    } catch {
+      // Ignore silent background sync errors
+    } finally {
+      setSyncingScheduler(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadSchedulerUpcoming();
+  }, []);
+
+  const handleLoadBookedSession = async (booked: SchedulerBookedSession) => {
+    try {
+      setBusy(true);
+      const byName = new Map<string, Player>();
+      for (const p of players) {
+        byName.set(p.name.trim().toLowerCase(), p);
+        if (p.nickname?.trim()) {
+          byName.set(p.nickname.trim().toLowerCase(), p);
+        }
+      }
+
+      const yesAttendees = booked.attendees.filter((a) => a.status === 'yes');
+      const resolvedIds: string[] = [];
+      let createdCount = 0;
+
+      for (const att of yesAttendees) {
+        const key = att.attendee_name.trim().toLowerCase();
+        const existing = byName.get(key);
+        if (existing) {
+          resolvedIds.push(existing.id);
+        } else {
+          const created = await api.createPlayer({
+            name: att.attendee_name.trim(),
+            skill_rating: 3.5,
+            avatar_color:
+              AVATAR_COLORS[(players.length + createdCount) % AVATAR_COLORS.length],
+          });
+          createdCount++;
+          byName.set(key, created);
+          onPlayerCreated(created);
+          resolvedIds.push(created.id);
+        }
+      }
+
+      const shortDate = booked.date_key.slice(5).replace('-', '/');
+      setTitle(
+        `${shortDate} ${booked.venue_short_name} (${booked.start_hour}:00–${booked.end_hour}:00)`
+      );
+      setLocation(booked.venue_full_name);
+      setFormat('rotating_partners');
+      setCourtsCount(Math.max(1, Math.min(3, Math.floor(Math.max(4, resolvedIds.length) / 4))));
+      setCheckedInIds(resolvedIds);
+      setShowCreateModal(true);
+
+      if (createdCount > 0) {
+        onNotify(
+          lang === 'ja'
+            ? `${createdCount}名の参加者をロスターに追加しました`
+            : `Imported ${createdCount} attendee(s) into roster`
+        );
+      }
+    } catch (err) {
+      onNotify(err instanceof Error ? err.message : 'Failed to load booked session');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     const targetId =
@@ -206,6 +292,26 @@ export function SessionsView({
     }
   };
 
+  const handleConfirmDeleteSession = async () => {
+    if (!deleteTarget) return;
+    if (deleteConfirmText.trim().toUpperCase() !== 'DELETE') return;
+    try {
+      setBusy(true);
+      await api.deleteSession(deleteTarget.id);
+      if (activeSession?.id === deleteTarget.id) {
+        onSelectSession(null);
+      }
+      setDeleteTarget(null);
+      setDeleteConfirmText('');
+      await onRefreshAll();
+      onNotify(lang === 'ja' ? 'セッションを削除しました' : 'Session deleted');
+    } catch (err) {
+      onNotify(err instanceof Error ? err.message : 'Could not delete session');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleSaveQuickScore = async () => {
     if (!quickScoreMatch) return;
     const a = Number(quickA);
@@ -264,47 +370,155 @@ export function SessionsView({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Navy Banner */}
-      <div className="navy-section-banner">
-        <div>
-          <h1>{t.title}</h1>
-          <p className="banner-sub">{t.subtitle}</p>
+      {/* Integrated Session Header Card (Matched to session-scheduler) */}
+      <section className="section-card is-strong-border">
+        <div className="section-card-header">
+          <div className="section-card-title">
+            <Users size={16} />
+            <div>
+              <h1>{t.title}</h1>
+              <div className="section-card-sub">{t.subtitle}</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            id="btn-new-session"
+            className="btn btn-lime btn-sm"
+            onClick={openCreateModal}
+          >
+            <Plus size={15} /> {t.newSession}
+          </button>
         </div>
-        <button
-          type="button"
-          id="btn-new-session"
-          className="btn btn-lime"
-          onClick={openCreateModal}
-        >
-          <Plus size={16} /> {t.newSession}
-        </button>
-      </div>
 
-      {/* Session Pill Selector */}
-      {sessions.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
-          {sessions.map((s) => (
+        {sessions.length > 0 && (
+          <div className="section-subbar" style={{ justifyContent: 'flex-start', overflowX: 'auto' }}>
+            {sessions.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className={`nav-pill-btn ${activeSession?.id === s.id ? 'active' : ''}`}
+                onClick={() => onSelectSession(s.id)}
+              >
+                {s.status === 'active' && (
+                  <span
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: '50%',
+                      background:
+                        activeSession?.id === s.id ? 'var(--optic-lime)' : 'var(--brand-emerald)',
+                    }}
+                  />
+                )}
+                {s.title}
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {schedulerSessions.length > 0 && (
+        <section className="section-card">
+          <div className="section-card-header">
+            <div className="section-card-title">
+              <Calendar size={16} />
+              <div>
+                <h2 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800 }}>
+                  {lang === 'ja'
+                    ? '確定済みセッション（Scheduler連携）'
+                    : 'Booked Sessions (from Scheduler)'}
+                </h2>
+                <div className="section-card-sub">
+                  {lang === 'ja'
+                    ? '会場・日時・参加者を読み込んでセッションを作成'
+                    : 'Load venue, date/time, and confirmed attendees directly'}
+                </div>
+              </div>
+            </div>
             <button
-              key={s.id}
               type="button"
-              className={`nav-pill-btn ${activeSession?.id === s.id ? 'active' : ''}`}
-              onClick={() => onSelectSession(s.id)}
+              className="btn btn-secondary btn-sm"
+              onClick={() => void loadSchedulerUpcoming()}
+              disabled={syncingScheduler}
             >
-              {s.status === 'active' && (
-                <span
-                  style={{
-                    width: 7,
-                    height: 7,
-                    borderRadius: '50%',
-                    background:
-                      activeSession?.id === s.id ? 'var(--optic-lime)' : 'var(--brand-emerald)',
-                  }}
-                />
-              )}
-              {s.title}
+              <RefreshCw size={13} className={syncingScheduler ? 'spin' : ''} />{' '}
+              {lang === 'ja' ? '同期' : 'Sync'}
             </button>
-          ))}
-        </div>
+          </div>
+          <div className="section-card-body">
+            <div className="grid-2">
+              {schedulerSessions.map((b) => {
+                const yesList = b.attendees.filter((a) => a.status === 'yes');
+                return (
+                  <div key={b.date_key} className="court-matchup-row" style={{ alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 800, fontSize: '0.92rem' }}>
+                          {b.date_key}
+                        </span>
+                        <span className="tag" style={{ fontSize: '0.72rem' }}>
+                          <Clock size={11} /> {b.start_hour}:00–{b.end_hour}:00
+                        </span>
+                        <span className="tag" style={{ fontSize: '0.72rem' }}>
+                          {b.court_type === 'indoor'
+                            ? lang === 'ja'
+                              ? '屋内'
+                              : 'Indoor'
+                            : lang === 'ja'
+                              ? '屋外'
+                              : 'Outdoor'}
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          color: 'var(--ink-primary)',
+                          marginTop: 4,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <MapPin size={13} style={{ color: 'var(--brand-emerald)' }} />
+                        <span>{b.venue_full_name}</span>
+                        {b.map_url && (
+                          <a
+                            href={b.map_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ color: 'var(--sky-accent)', display: 'inline-flex', alignItems: 'center' }}
+                            title="Open map"
+                          >
+                            <ExternalLink size={12} />
+                          </a>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--ink-secondary)', marginTop: 4 }}>
+                        {yesList.length > 0
+                          ? `${yesList.length} ${lang === 'ja' ? '名参加' : 'confirmed'}: ${yesList
+                              .map((a) => a.attendee_name)
+                              .join(', ')}`
+                          : lang === 'ja'
+                            ? '参加者未登録'
+                            : 'No confirmed attendees yet'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-lime btn-sm"
+                      onClick={() => void handleLoadBookedSession(b)}
+                      disabled={busy}
+                    >
+                      <Plus size={13} /> {lang === 'ja' ? '読み込む' : 'Use'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
       )}
 
       {!activeSession ? (
@@ -379,27 +593,42 @@ export function SessionsView({
                 </div>
               </div>
 
-              {activeSession.status === 'active' && (
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    id="btn-next-round"
-                    className="btn btn-lime btn-sm"
-                    onClick={handleGenerateNextRound}
-                    disabled={busy}
-                  >
-                    <Sparkles size={14} /> {t.nextRound} {activeSession.current_round + 1}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={handleEndSession}
-                    disabled={busy}
-                  >
-                    <CheckCircle2 size={14} /> {t.endSession}
-                  </button>
-                </div>
-              )}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {activeSession.status === 'active' && (
+                  <>
+                    <button
+                      type="button"
+                      id="btn-next-round"
+                      className="btn btn-lime btn-sm"
+                      onClick={handleGenerateNextRound}
+                      disabled={busy}
+                    >
+                      <Sparkles size={14} /> {t.nextRound} {activeSession.current_round + 1}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={handleEndSession}
+                      disabled={busy}
+                    >
+                      <CheckCircle2 size={14} /> {t.endSession}
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  id="btn-delete-session"
+                  className="btn btn-danger btn-sm"
+                  onClick={() => {
+                    setDeleteConfirmText('');
+                    setDeleteTarget(activeSession);
+                  }}
+                  disabled={busy}
+                  title={lang === 'ja' ? 'セッションを削除' : 'Delete session'}
+                >
+                  <Trash2 size={14} /> {lang === 'ja' ? '削除' : 'Delete'}
+                </button>
+              </div>
             </div>
 
             {/* Round Switcher Pills */}
@@ -525,24 +754,16 @@ export function SessionsView({
           </div>
 
           {/* Live Session Standings */}
-          <div className="card">
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: 10,
-              }}
-            >
-              <span
-                className="section-heading"
-                style={{ margin: 0, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-              >
-                <Trophy size={14} /> {t.standings}
-              </span>
-              <span style={{ fontSize: '0.78rem', color: 'var(--ink-muted)' }}>{t.rankNote}</span>
+          <section className="section-card">
+            <div className="section-card-header secondary">
+              <div className="section-card-title">
+                <Trophy size={16} />
+                <h2>{t.standings}</h2>
+              </div>
+              <span className="section-card-sub">{t.rankNote}</span>
             </div>
 
+            <div className="section-card-body" style={{ padding: 0 }}>
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
@@ -598,7 +819,8 @@ export function SessionsView({
                 </tbody>
               </table>
             </div>
-          </div>
+            </div>
+          </section>
         </>
       )}
 
@@ -616,6 +838,7 @@ export function SessionsView({
                 <X size={18} />
               </button>
             </div>
+            <div className="modal-body">
             <div className="grid-2">
               <div className="field-group">
                 <label className="field-label" htmlFor="qs-a">
@@ -663,6 +886,7 @@ export function SessionsView({
                 <Check size={15} /> Save Score
               </button>
             </div>
+            </div>
           </div>
         </div>
       )}
@@ -681,6 +905,7 @@ export function SessionsView({
                 <X size={18} />
               </button>
             </div>
+            <div className="modal-body">
 
             <div className="grid-2">
               <div className="field-group">
@@ -875,6 +1100,105 @@ export function SessionsView({
                 disabled={busy || checkedInIds.length < 4}
               >
                 {lang === 'ja' ? '作成＆第1ラウンド生成' : 'Create & Generate Round 1'}
+              </button>
+            </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete Session Protection Modal */}
+      {deleteTarget && (
+        <div
+          className="modal-backdrop"
+          onClick={() => {
+            if (!busy) setDeleteTarget(null);
+          }}
+        >
+          <div className="modal-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--danger)' }}>
+                <Trash2 size={18} />
+                <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>
+                  {lang === 'ja' ? 'セッション削除の確認' : 'Confirm Session Deletion'}
+                </h2>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon"
+                onClick={() => setDeleteTarget(null)}
+                disabled={busy}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <p style={{ margin: 0, fontSize: '0.88rem', lineHeight: 1.5 }}>
+                {lang === 'ja' ? (
+                  <>
+                    <strong>{deleteTarget.title}</strong> を削除します。この操作は取り消せません。
+                  </>
+                ) : (
+                  <>
+                    You are about to permanently delete <strong>{deleteTarget.title}</strong>. This
+                    action cannot be undone.
+                  </>
+                )}
+              </p>
+              <div
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--danger-soft)',
+                  border: '1px solid rgba(225, 29, 72, 0.25)',
+                  fontSize: '0.8rem',
+                  color: 'var(--danger)',
+                  fontWeight: 700,
+                }}
+              >
+                {lang === 'ja'
+                  ? `含まれる試合: ${sessionMatches.length}件（完了済み: ${
+                      sessionMatches.filter((m) => m.status === 'completed').length
+                    }件）`
+                  : `Session contains ${sessionMatches.length} match(es) (${
+                      sessionMatches.filter((m) => m.status === 'completed').length
+                    } completed).`}
+              </div>
+              <div className="field-group">
+                <label className="field-label" htmlFor="delete-session-confirm">
+                  {lang === 'ja'
+                    ? '続行するには DELETE と入力してください'
+                    : 'Type DELETE to confirm'}
+                </label>
+                <input
+                  id="delete-session-confirm"
+                  type="text"
+                  className="input"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="DELETE"
+                  autoComplete="off"
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setDeleteTarget(null)}
+                disabled={busy}
+              >
+                {lang === 'ja' ? 'キャンセル' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-delete-session"
+                className="btn btn-danger"
+                onClick={() => void handleConfirmDeleteSession()}
+                disabled={busy || deleteConfirmText.trim().toUpperCase() !== 'DELETE'}
+              >
+                <Trash2 size={15} />{' '}
+                {lang === 'ja' ? '完全に削除する' : 'Delete Session'}
               </button>
             </div>
           </div>

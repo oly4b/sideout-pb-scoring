@@ -8,6 +8,7 @@ import { generateNextRound } from '../../shared/rotationEngine';
 import { computePlayerDetailStats, computeStandings } from '../../shared/statsEngine';
 import type { Match, Player } from '../../shared/types';
 import { getRepository } from './db';
+import { fetchSchedulerUpcoming } from './schedulerSync';
 
 const app = express();
 app.use(cors());
@@ -29,6 +30,22 @@ app.get('/api/health', async (_req, res) => {
 app.get('/api/db/status', async (_req, res) => {
   const status = await repo.getStatus();
   res.json(status);
+});
+
+app.get('/api/scheduler/upcoming', async (req, res) => {
+  try {
+    const minDate = typeof req.query.minDate === 'string' ? req.query.minDate : undefined;
+    const payload = await fetchSchedulerUpcoming(minDate);
+    res.json(payload);
+  } catch (err) {
+    res.status(500).json({
+      connected: false,
+      min_date: '',
+      sessions: [],
+      players: [],
+      error: err instanceof Error ? err.message : 'Failed to fetch scheduler data',
+    });
+  }
 });
 
 app.get('/api/db/schema', (_req, res) => {
@@ -55,10 +72,27 @@ app.get('/api/export-project', (_req, res) => {
   res.download(zipPath, 'sideout-pb-scoring.zip');
 });
 
+const SEED_COLORS = ['#1D4ED8', '#15803D', '#E25747', '#B45309', '#0E7490', '#BE185D', '#3F6212'];
+
 // Players
 app.get('/api/players', async (_req, res) => {
   try {
-    const players = await repo.listPlayers();
+    let players = await repo.listPlayers();
+    if (players.length === 0) {
+      const upcoming = await fetchSchedulerUpcoming().catch(() => null);
+      if (upcoming?.connected && upcoming.players.length > 0) {
+        for (let i = 0; i < upcoming.players.length; i++) {
+          const sp = upcoming.players[i];
+          if (!sp.name.trim()) continue;
+          await repo.createPlayer({
+            name: sp.name.trim(),
+            skill_rating: 3.5,
+            avatar_color: SEED_COLORS[i % SEED_COLORS.length],
+          });
+        }
+        players = await repo.listPlayers();
+      }
+    }
     res.json(players);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to list players' });

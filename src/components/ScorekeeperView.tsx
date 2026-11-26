@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  buildVoiceAnnouncement,
   computeMomentum,
   createInitialLiveState,
   formatScoreCallout,
@@ -38,6 +37,8 @@ import type {
 } from '../../shared/types';
 import { api } from '../lib/api';
 import { copy, type Lang } from '../lib/i18n';
+import { playRallySound, playUndoSound } from '../lib/soundEffects';
+import { SideoutMatchStage } from './match/SideoutMatchStage';
 
 interface ScorekeeperViewProps {
   lang: Lang;
@@ -73,6 +74,7 @@ export function ScorekeeperView({
   const [scoringMode, setScoringMode] = useState<ScoringMode>('side_out');
   const [targetScore, setTargetScore] = useState<TargetScore>(11);
   const [winByTwo, setWinByTwo] = useState(true);
+  const [autoSwitchEnds, setAutoSwitchEnds] = useState(true);
   const [teamA1, setTeamA1] = useState<string>(players[0]?.id ?? '');
   const [teamA2, setTeamA2] = useState<string>(players[1]?.id ?? '');
   const [teamB1, setTeamB1] = useState<string>(players[2]?.id ?? '');
@@ -80,7 +82,7 @@ export function ScorekeeperView({
   const [creating, setCreating] = useState(false);
 
   const [viewMode, setViewMode] = useState<'court' | 'scoreboard'>('court');
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
   const [liveState, setLiveState] = useState<LiveGameState | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -139,18 +141,6 @@ export function ScorekeeperView({
     return () => window.clearInterval(id);
   }, [activeMatch?.id, activeMatch?.status, liveState?.winnerTeam]);
 
-  const speak = (text: string) => {
-    if (!voiceEnabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    try {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.03;
-      window.speechSynthesis.speak(utterance);
-    } catch {
-      // Speech API unavailable
-    }
-  };
-
   const persistMatchState = (match: Match, next: LiveGameState, immediate = false) => {
     const doSave = async () => {
       try {
@@ -190,13 +180,9 @@ export function ScorekeeperView({
     if (!activeMatch || !liveState || liveState.winnerTeam) return;
     const next = recordRally(liveState, winner, activeMatch.id);
     setLiveState(next);
-    const announcement = buildVoiceAnnouncement(
-      liveState,
-      next,
-      activeMatch.team_a_name,
-      activeMatch.team_b_name
-    );
-    speak(announcement);
+    if (soundEnabled) {
+      void playRallySound(next);
+    }
     persistMatchState(activeMatch, next, next.winnerTeam !== null);
   };
 
@@ -211,6 +197,9 @@ export function ScorekeeperView({
       [teamBParts[0]?.player_id ?? null, teamBParts[1]?.player_id ?? null]
     );
     setLiveState(next);
+    if (soundEnabled) {
+      void playUndoSound();
+    }
     persistMatchState(activeMatch, next);
   };
 
@@ -376,46 +365,58 @@ export function ScorekeeperView({
         </section>
 
         {inProgressMatches.length > 0 && (
-          <section className="card card-confirmed" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span className="section-heading" style={{ margin: 0, color: 'var(--brand-emerald)' }}>
-                {t.resumeTitle} ({inProgressMatches.length})
-              </span>
-              <span className="tag tag-live">{t.autoSaved}</span>
+          <section className="section-card is-confirmed">
+            <div className="section-card-header">
+              <div className="section-card-title">
+                <Play size={16} />
+                <h2>
+                  {t.resumeTitle} ({inProgressMatches.length})
+                </h2>
+              </div>
+              <span className="momo-lime-pill">{t.autoSaved}</span>
             </div>
-            <div className="grid-2">
-              {inProgressMatches.map((m) => (
-                <div key={m.id} className="court-matchup-row">
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 800, fontSize: '0.9rem' }}>
-                      {m.team_a_name} vs {m.team_b_name}
+            <div className="section-card-body">
+              <div className="grid-2">
+                {inProgressMatches.map((m) => (
+                  <div key={m.id} className="court-matchup-row">
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: '0.9rem' }}>
+                        {m.team_a_name} vs {m.team_b_name}
+                      </div>
+                      <div
+                        className="tabular-nums"
+                        style={{ fontSize: '0.78rem', color: 'var(--ink-secondary)', marginTop: 2 }}
+                      >
+                        {m.court_number ? `Court ${m.court_number} · ` : ''}
+                        {m.team_a_score} – {m.team_b_score} ·{' '}
+                        {m.scoring_mode === 'side_out' ? 'Side-Out' : 'Rally'} ({m.target_score})
+                      </div>
                     </div>
-                    <div style={{ fontSize: '0.78rem', color: 'var(--ink-secondary)', marginTop: 2 }}>
-                      {m.court_number ? `Court ${m.court_number} · ` : ''}
-                      {m.team_a_score} – {m.team_b_score} ·{' '}
-                      {m.scoring_mode === 'side_out' ? 'Side-Out' : 'Rally'} ({m.target_score})
-                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-lime btn-sm"
+                      onClick={() => onSelectMatch(m)}
+                    >
+                      <Play size={14} /> {t.resume}
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    className="btn btn-lime btn-sm"
-                    onClick={() => onSelectMatch(m)}
-                  >
-                    <Play size={14} /> {t.resume}
-                  </button>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </section>
         )}
 
-        <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-            <h2 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 800 }}>{t.quickMatchTitle}</h2>
-            <div className="segmented">
+        <section className="section-card is-strong-border">
+          <div className="section-card-header">
+            <div className="section-card-title">
+              <LayoutGrid size={16} />
+              <h2>{t.quickMatchTitle}</h2>
+            </div>
+            <div className="segmented" style={{ background: 'rgba(15, 23, 42, 0.45)', borderColor: 'rgba(255,255,255,0.15)' }}>
               <button
                 type="button"
                 className={`segmented-btn ${gameType === 'doubles' ? 'active' : ''}`}
+                style={gameType === 'doubles' ? { background: 'var(--optic-lime)', color: 'var(--optic-lime-ink)' } : { color: 'rgba(255,255,255,0.78)' }}
                 onClick={() => setGameType('doubles')}
               >
                 {t.doubles}
@@ -423,12 +424,14 @@ export function ScorekeeperView({
               <button
                 type="button"
                 className={`segmented-btn ${gameType === 'singles' ? 'active' : ''}`}
+                style={gameType === 'singles' ? { background: 'var(--optic-lime)', color: 'var(--optic-lime-ink)' } : { color: 'rgba(255,255,255,0.78)' }}
                 onClick={() => setGameType('singles')}
               >
                 {t.singles}
               </button>
             </div>
           </div>
+          <div className="section-card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           <div className="grid-2">
             <div
@@ -602,6 +605,25 @@ export function ScorekeeperView({
                 />
                 {t.winByTwo}
               </label>
+
+              <label
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  fontSize: '0.84rem',
+                  fontWeight: 700,
+                  marginTop: 16,
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={autoSwitchEnds}
+                  onChange={(e) => setAutoSwitchEnds(e.target.checked)}
+                />
+                {t.autoSwitchEnds} ({Math.ceil(targetScore / 2)})
+              </label>
             </div>
 
             <button
@@ -613,6 +635,7 @@ export function ScorekeeperView({
             >
               <Play size={16} /> {t.startMatch}
             </button>
+          </div>
           </div>
         </section>
       </div>
@@ -678,14 +701,24 @@ export function ScorekeeperView({
           </div>
           <button
             type="button"
-            className={`btn btn-icon ${voiceEnabled ? 'btn-lime' : 'btn-secondary'}`}
+            className={`btn btn-icon ${soundEnabled ? 'btn-lime' : 'btn-secondary'}`}
             onClick={() => {
-              setVoiceEnabled((v) => !v);
-              onNotify(!voiceEnabled ? 'Voice callouts enabled' : 'Voice callouts muted');
+              const nextSound = !soundEnabled;
+              setSoundEnabled(nextSound);
+              onNotify(
+                lang === 'ja'
+                  ? nextSound
+                    ? '効果音をオンにしました'
+                    : '効果音をミュートしました'
+                  : nextSound
+                    ? 'Sound effects enabled'
+                    : 'Sound effects muted'
+              );
             }}
-            aria-label="Toggle voice callouts"
+            aria-label="Toggle sound effects"
+            title={soundEnabled ? 'Mute sound effects' : 'Enable sound effects'}
           >
-            {voiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+            {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
           </button>
         </div>
       </div>
@@ -722,312 +755,194 @@ export function ScorekeeperView({
         </div>
       )}
 
-      {/* Official Score Callout Deep Navy Banner */}
-      <div className="callout-banner">
-        <div className="callout-meta">
-          <span className="callout-label">
-            {liveState.winnerTeam ? t.finalScore : t.officialCallout}
-          </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <span className="callout-digits" id="live-callout-display">
-              {callout}
-            </span>
-            {gamePointTeam && (
-              <span className="tag tag-lime">
-                GAME POINT · {gamePointTeam === 'A' ? activeMatch.team_a_name : activeMatch.team_b_name}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div style={{ textAlign: 'right' }}>
-          <div className="callout-server-note">
-            <span
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: '50%',
-                background: liveState.servingTeam === 'A' ? '#60A5FA' : 'var(--momo-peach)',
-                display: 'inline-block',
-              }}
-            />
-            {t.serving}:{' '}
-            <strong>
-              {playerDisplay(
-                serverPlayerId,
-                liveState.servingTeam === 'A' ? activeMatch.team_a_name : activeMatch.team_b_name
-              )}
-            </strong>{' '}
-            ({serverSide === 'right' ? t.rightEven : t.leftOdd})
-          </div>
-          <div style={{ fontSize: '0.74rem', color: 'rgba(255,255,255,0.62)', marginTop: 3 }}>
-            {saving ? t.syncing : `${liveState.rallies.length} ${t.ralliesLogged}`}
-          </div>
-        </div>
-      </div>
-
       {/* Main Scoring Surface */}
       {viewMode === 'court' ? (
-        <div className="court-apron">
-          <div className="court-rectangle">
-            <button
-              type="button"
-              id="btn-rally-team-b"
-              className="court-half"
-              onClick={() => handleRally('B')}
-              disabled={Boolean(liveState.winnerTeam)}
-            >
-              <div className="court-half-bar">
-                <div className="court-team-identity">
-                  <span className="court-team-swatch" style={{ background: 'var(--momo-peach)' }} />
-                  <span className="court-team-name">{activeMatch.team_b_name}</span>
-                  {liveState.servingTeam === 'B' && !liveState.winnerTeam && (
-                    <span className="tag tag-lime">
-                      SERVING{liveState.gameType === 'doubles' && liveState.scoringMode === 'side_out' ? ` · #${liveState.serverNumber}` : ''}
-                    </span>
-                  )}
-                </div>
-                <span className="court-score-num">{liveState.teamBScore}</span>
-              </div>
-
-              <div className={`court-boxes ${liveState.gameType === 'singles' ? 'singles' : ''}`}>
-                {liveState.gameType === 'doubles' ? (
-                  <>
-                    <div
-                      className={`court-box ${
-                        liveState.servingTeam === 'B' && serverSide === 'right' ? 'serving-box' : ''
-                      }`}
-                    >
-                      <span className="court-box-tag">{t.rightEven}</span>
-                      <span
-                        className={`court-player-chip ${
-                          liveState.servingTeam === 'B' && serverSide === 'right' ? 'is-server' : ''
-                        }`}
-                      >
-                        {liveState.servingTeam === 'B' && serverSide === 'right' && '● '}
-                        {playerDisplay(liveState.positions.teamB.right, 'B1')}
-                      </span>
-                    </div>
-                    <div
-                      className={`court-box ${
-                        liveState.servingTeam === 'B' && serverSide === 'left' ? 'serving-box' : ''
-                      }`}
-                    >
-                      <span className="court-box-tag">{t.leftOdd}</span>
-                      <span
-                        className={`court-player-chip ${
-                          liveState.servingTeam === 'B' && serverSide === 'left' ? 'is-server' : ''
-                        }`}
-                      >
-                        {liveState.servingTeam === 'B' && serverSide === 'left' && '● '}
-                        {playerDisplay(liveState.positions.teamB.left, 'B2')}
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <div className={`court-box ${liveState.servingTeam === 'B' ? 'serving-box' : ''}`}>
-                    <span className="court-box-tag">
-                      {liveState.servingTeam === 'B' ? `${t.serving} (${serverSide})` : 'Receiving'}
-                    </span>
-                    <span
-                      className={`court-player-chip ${liveState.servingTeam === 'B' ? 'is-server' : ''}`}
-                    >
-                      {playerDisplay(liveState.positions.teamB.right, activeMatch.team_b_name)}
-                    </span>
-                  </div>
+        <SideoutMatchStage
+          activeMatch={activeMatch}
+          liveState={liveState}
+          callout={callout}
+          serverSide={serverSide}
+          serverDisplayName={playerDisplay(
+            serverPlayerId,
+            liveState.servingTeam === 'A' ? activeMatch.team_a_name : activeMatch.team_b_name
+          )}
+          gamePointTeam={gamePointTeam}
+          teamALabels={{
+            right: playerDisplay(
+              liveState.positions.teamA.right,
+              liveState.gameType === 'singles' ? activeMatch.team_a_name || 'Player 1' : 'A1'
+            ),
+            left: playerDisplay(liveState.positions.teamA.left, 'A2'),
+          }}
+          teamBLabels={{
+            right: playerDisplay(
+              liveState.positions.teamB.right,
+              liveState.gameType === 'singles' ? activeMatch.team_b_name || 'Player 2' : 'B1'
+            ),
+            left: playerDisplay(liveState.positions.teamB.left, 'B2'),
+          }}
+          autoSwitchEnds={autoSwitchEnds}
+          onToggleAutoSwitchEnds={() => setAutoSwitchEnds((v) => !v)}
+          saving={saving}
+          onRally={handleRally}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          onSwapServer={handleSwapServer}
+          onSwapBoxes={handleSwapBoxes}
+          onFinishEarly={handleFinishEarly}
+          onRematch={handleRematch}
+          onBack={() => {
+            if (activeMatch.session_id && onBackToSession) {
+              onBackToSession(activeMatch.session_id);
+            } else {
+              onSelectMatch(null);
+            }
+          }}
+        />
+      ) : (
+        <>
+          <div className="callout-banner">
+            <div className="callout-meta">
+              <span className="callout-label">
+                {liveState.winnerTeam ? t.finalScore : t.officialCallout}
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <span className="callout-digits" id="live-callout-display">
+                  {callout}
+                </span>
+                {gamePointTeam && (
+                  <span className="tag tag-lime">
+                    GAME POINT · {gamePointTeam === 'A' ? activeMatch.team_a_name : activeMatch.team_b_name}
+                  </span>
                 )}
               </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div className="callout-server-note">
+                {t.serving}:{' '}
+                <strong>
+                  {playerDisplay(
+                    serverPlayerId,
+                    liveState.servingTeam === 'A' ? activeMatch.team_a_name : activeMatch.team_b_name
+                  )}
+                </strong>{' '}
+                ({serverSide === 'right' ? t.rightEven : t.leftOdd})
+              </div>
+            </div>
+          </div>
 
-              <div className="court-kitchen top">{liveState.winnerTeam ? t.nvz : t.tapTop}</div>
-            </button>
-
-            <div className="court-net" aria-hidden="true" />
-
+          <div className="scoreboard-grid">
             <button
               type="button"
               id="btn-rally-team-a"
-              className="court-half"
+              className={`scoreboard-tile ${liveState.servingTeam === 'A' ? 'serving-a' : ''}`}
               onClick={() => handleRally('A')}
               disabled={Boolean(liveState.winnerTeam)}
             >
-              <div className="court-kitchen bottom">
-                {liveState.winnerTeam ? t.nvz : t.tapBottom}
+              <span className="tag tag-team-a">TEAM A</span>
+              <div style={{ fontWeight: 800, fontSize: '1.15rem' }}>{activeMatch.team_a_name}</div>
+              <div className="scoreboard-big-num" style={{ color: 'var(--team-a)' }}>
+                {liveState.teamAScore}
               </div>
+              {liveState.servingTeam === 'A' && !liveState.winnerTeam ? (
+                <span className="tag tag-lime">
+                  {t.serving} · {playerDisplay(serverPlayerId, 'Server')}
+                  {liveState.gameType === 'doubles' && liveState.scoringMode === 'side_out'
+                    ? ` (#${liveState.serverNumber})`
+                    : ''}
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>{t.tapHere}</span>
+              )}
+            </button>
 
-              <div className={`court-boxes ${liveState.gameType === 'singles' ? 'singles' : ''}`}>
-                {liveState.gameType === 'doubles' ? (
-                  <>
-                    <div
-                      className={`court-box ${
-                        liveState.servingTeam === 'A' && serverSide === 'left' ? 'serving-box' : ''
-                      }`}
-                    >
-                      <span className="court-box-tag">{t.leftOdd}</span>
-                      <span
-                        className={`court-player-chip ${
-                          liveState.servingTeam === 'A' && serverSide === 'left' ? 'is-server' : ''
-                        }`}
-                      >
-                        {liveState.servingTeam === 'A' && serverSide === 'left' && '● '}
-                        {playerDisplay(liveState.positions.teamA.left, 'A2')}
-                      </span>
-                    </div>
-                    <div
-                      className={`court-box ${
-                        liveState.servingTeam === 'A' && serverSide === 'right' ? 'serving-box' : ''
-                      }`}
-                    >
-                      <span className="court-box-tag">{t.rightEven}</span>
-                      <span
-                        className={`court-player-chip ${
-                          liveState.servingTeam === 'A' && serverSide === 'right' ? 'is-server' : ''
-                        }`}
-                      >
-                        {liveState.servingTeam === 'A' && serverSide === 'right' && '● '}
-                        {playerDisplay(liveState.positions.teamA.right, 'A1')}
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <div className={`court-box ${liveState.servingTeam === 'A' ? 'serving-box' : ''}`}>
-                    <span className="court-box-tag">
-                      {liveState.servingTeam === 'A' ? `${t.serving} (${serverSide})` : 'Receiving'}
-                    </span>
-                    <span
-                      className={`court-player-chip ${liveState.servingTeam === 'A' ? 'is-server' : ''}`}
-                    >
-                      {playerDisplay(liveState.positions.teamA.right, activeMatch.team_a_name)}
-                    </span>
-                  </div>
-                )}
+            <button
+              type="button"
+              id="btn-rally-team-b"
+              className={`scoreboard-tile ${liveState.servingTeam === 'B' ? 'serving-b' : ''}`}
+              onClick={() => handleRally('B')}
+              disabled={Boolean(liveState.winnerTeam)}
+            >
+              <span className="tag tag-team-b">TEAM B</span>
+              <div style={{ fontWeight: 800, fontSize: '1.15rem' }}>{activeMatch.team_b_name}</div>
+              <div className="scoreboard-big-num" style={{ color: 'var(--team-b)' }}>
+                {liveState.teamBScore}
               </div>
-
-              <div className="court-half-bar">
-                <div className="court-team-identity">
-                  <span className="court-team-swatch" style={{ background: '#60A5FA' }} />
-                  <span className="court-team-name">{activeMatch.team_a_name}</span>
-                  {liveState.servingTeam === 'A' && !liveState.winnerTeam && (
-                    <span className="tag tag-lime">
-                      SERVING{liveState.gameType === 'doubles' && liveState.scoringMode === 'side_out' ? ` · #${liveState.serverNumber}` : ''}
-                    </span>
-                  )}
-                </div>
-                <span className="court-score-num">{liveState.teamAScore}</span>
-              </div>
+              {liveState.servingTeam === 'B' && !liveState.winnerTeam ? (
+                <span className="tag tag-lime">
+                  {t.serving} · {playerDisplay(serverPlayerId, 'Server')}
+                  {liveState.gameType === 'doubles' && liveState.scoringMode === 'side_out'
+                    ? ` (#${liveState.serverNumber})`
+                    : ''}
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>{t.tapHere}</span>
+              )}
             </button>
           </div>
-        </div>
-      ) : (
-        <div className="scoreboard-grid">
-          <button
-            type="button"
-            className={`scoreboard-tile ${liveState.servingTeam === 'A' ? 'serving-a' : ''}`}
-            onClick={() => handleRally('A')}
-            disabled={Boolean(liveState.winnerTeam)}
-          >
-            <span className="tag tag-team-a">TEAM A</span>
-            <div style={{ fontWeight: 800, fontSize: '1.15rem' }}>{activeMatch.team_a_name}</div>
-            <div className="scoreboard-big-num" style={{ color: 'var(--team-a)' }}>
-              {liveState.teamAScore}
-            </div>
-            {liveState.servingTeam === 'A' && !liveState.winnerTeam ? (
-              <span className="tag tag-lime">
-                {t.serving} · {playerDisplay(serverPlayerId, 'Server')}
-                {liveState.gameType === 'doubles' && liveState.scoringMode === 'side_out'
-                  ? ` (#${liveState.serverNumber})`
-                  : ''}
-              </span>
-            ) : (
-              <span style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>{t.tapBottom}</span>
-            )}
-          </button>
 
-          <button
-            type="button"
-            className={`scoreboard-tile ${liveState.servingTeam === 'B' ? 'serving-b' : ''}`}
-            onClick={() => handleRally('B')}
-            disabled={Boolean(liveState.winnerTeam)}
-          >
-            <span className="tag tag-team-b">TEAM B</span>
-            <div style={{ fontWeight: 800, fontSize: '1.15rem' }}>{activeMatch.team_b_name}</div>
-            <div className="scoreboard-big-num" style={{ color: 'var(--team-b)' }}>
-              {liveState.teamBScore}
+          <div className="card controls-strip">
+            <div className="controls-group">
+              <button
+                type="button"
+                id="btn-undo-rally"
+                className="btn btn-secondary btn-sm"
+                onClick={handleUndo}
+                disabled={liveState.rallies.length === 0}
+              >
+                <Undo2 size={15} /> {t.undo}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleRedo}
+                disabled={liveState.redoStack.length === 0}
+              >
+                <Redo2 size={15} /> {t.redo}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleSwapServer}
+                disabled={Boolean(liveState.winnerTeam)}
+              >
+                <RotateCcw size={15} /> {t.fixServer}
+              </button>
+              {liveState.gameType === 'doubles' && (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => handleSwapBoxes('A')}
+                    disabled={Boolean(liveState.winnerTeam)}
+                  >
+                    <ArrowLeftRight size={14} /> {t.swapA}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => handleSwapBoxes('B')}
+                    disabled={Boolean(liveState.winnerTeam)}
+                  >
+                    <ArrowLeftRight size={14} /> {t.swapB}
+                  </button>
+                </>
+              )}
             </div>
-            {liveState.servingTeam === 'B' && !liveState.winnerTeam ? (
-              <span className="tag tag-lime">
-                {t.serving} · {playerDisplay(serverPlayerId, 'Server')}
-                {liveState.gameType === 'doubles' && liveState.scoringMode === 'side_out'
-                  ? ` (#${liveState.serverNumber})`
-                  : ''}
-              </span>
-            ) : (
-              <span style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>{t.tapTop}</span>
+
+            {!liveState.winnerTeam && (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleFinishEarly}
+                disabled={saving}
+              >
+                <CheckCircle2 size={15} /> {t.endSave}
+              </button>
             )}
-          </button>
-        </div>
+          </div>
+        </>
       )}
-
-      {/* Controls Strip */}
-      <div className="card controls-strip">
-        <div className="controls-group">
-          <button
-            type="button"
-            id="btn-undo-rally"
-            className="btn btn-secondary btn-sm"
-            onClick={handleUndo}
-            disabled={liveState.rallies.length === 0}
-          >
-            <Undo2 size={15} /> {t.undo}
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={handleRedo}
-            disabled={liveState.redoStack.length === 0}
-          >
-            <Redo2 size={15} /> {t.redo}
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={handleSwapServer}
-            disabled={Boolean(liveState.winnerTeam)}
-          >
-            <RotateCcw size={15} /> {t.fixServer}
-          </button>
-          {liveState.gameType === 'doubles' && (
-            <>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => handleSwapBoxes('A')}
-                disabled={Boolean(liveState.winnerTeam)}
-              >
-                <ArrowLeftRight size={14} /> {t.swapA}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => handleSwapBoxes('B')}
-                disabled={Boolean(liveState.winnerTeam)}
-              >
-                <ArrowLeftRight size={14} /> {t.swapB}
-              </button>
-            </>
-          )}
-        </div>
-
-        {!liveState.winnerTeam && (
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={handleFinishEarly}
-            disabled={saving}
-          >
-            <CheckCircle2 size={15} /> {t.endSave}
-          </button>
-        )}
-      </div>
 
       {/* Momentum Gauge */}
       <div className="card momentum-card">

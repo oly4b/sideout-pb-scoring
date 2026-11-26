@@ -170,3 +170,33 @@ export interface DatabaseStatus {
     rallies: number;
   };
 }
+
+export interface SchedulerAttendee {
+  attendee_name: string;
+  status: 'yes' | 'maybe';
+}
+
+export interface SchedulerBookedSession {
+  date_key: string;
+  start_hour: number;
+  end_hour: number;
+  venue_id: string;
+  venue_short_name: string;
+  venue_full_name: string;
+  map_url: string;
+  court_type: 'indoor' | 'outdoor';
+  attendees: SchedulerAttendee[];
+}
+
+export interface SchedulerPollPlayer {
+  name: string;
+  note: string;
+}
+
+export interface SchedulerUpcomingPayload {
+  connected: boolean;
+  min_date: string;
+  sessions: SchedulerBookedSession[];
+  players: SchedulerPollPlayer[];
+  error?: string;
+}

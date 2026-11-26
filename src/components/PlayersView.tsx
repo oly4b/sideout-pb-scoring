@@ -1,4 +1,4 @@
-import { Plus, Swords, Trash2, Trophy, UserCheck, X } from 'lucide-react';
+import { Plus, RefreshCw, Swords, Trash2, Trophy, UserCheck, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { computePlayerDetailStats, computeStandings } from '../../shared/statsEngine';
 import type { Match, Player } from '../../shared/types';
@@ -24,6 +24,55 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
   const [rating, setRating] = useState('3.50');
   const [color, setColor] = useState(SWATCHES[0]);
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSyncFromScheduler = async () => {
+    try {
+      setSyncing(true);
+      const data = await api.getSchedulerUpcoming();
+      if (!data.connected) {
+        onNotify(data.error || 'Scheduler database not connected');
+        return;
+      }
+      const existingNames = new Set<string>();
+      for (const p of players) {
+        existingNames.add(p.name.trim().toLowerCase());
+        if (p.nickname?.trim()) existingNames.add(p.nickname.trim().toLowerCase());
+      }
+
+      let added = 0;
+      for (const sp of data.players) {
+        const key = sp.name.trim().toLowerCase();
+        if (!key || existingNames.has(key)) continue;
+        await api.createPlayer({
+          name: sp.name.trim(),
+          skill_rating: 3.5,
+          avatar_color: SWATCHES[(players.length + added) % SWATCHES.length],
+        });
+        existingNames.add(key);
+        added++;
+      }
+
+      if (added > 0) {
+        await onRefreshAll();
+        onNotify(
+          lang === 'ja'
+            ? `Schedulerから${added}名のプレイヤーを同期しました`
+            : `Synced ${added} player(s) from session-scheduler`
+        );
+      } else {
+        onNotify(
+          lang === 'ja'
+            ? 'ロスターはSchedulerと同期済みです'
+            : 'Roster is already up to date with session-scheduler'
+        );
+      }
+    } catch (err) {
+      onNotify(err instanceof Error ? err.message : 'Failed to sync players');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const standings = useMemo(() => computeStandings(players, matches), [players, matches]);
   const detail = useMemo(
@@ -70,45 +119,51 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div className="navy-section-banner">
-        <div>
-          <h1>{t.title}</h1>
-          <p className="banner-sub">{t.subtitle}</p>
+      <section className="section-card is-strong-border">
+        <div className="section-card-header">
+          <div className="section-card-title">
+            <Trophy size={16} />
+            <div>
+              <h1>{t.title}</h1>
+              <div className="section-card-sub">{t.subtitle}</div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => void handleSyncFromScheduler()}
+              disabled={syncing}
+            >
+              <RefreshCw size={14} />{' '}
+              {lang === 'ja' ? 'Scheduler同期' : 'Sync Scheduler'}
+            </button>
+            <button
+              type="button"
+              id="btn-add-player"
+              className="btn btn-lime btn-sm"
+              onClick={() => {
+                setColor(SWATCHES[players.length % SWATCHES.length]);
+                setShowModal(true);
+              }}
+            >
+              <Plus size={15} /> {t.addPlayer}
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          id="btn-add-player"
-          className="btn btn-lime"
-          onClick={() => {
-            setColor(SWATCHES[players.length % SWATCHES.length]);
-            setShowModal(true);
-          }}
-        >
-          <Plus size={16} /> {t.addPlayer}
-        </button>
-      </div>
 
-      <div className="card">
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: 10,
-            flexWrap: 'wrap',
-            gap: 8,
-          }}
-        >
+        <div className="section-subbar">
           <span
             className="section-heading"
             style={{ margin: 0, display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
             <Trophy size={14} /> {t.leaderboard} ({players.length})
           </span>
-          <span style={{ fontSize: '0.78rem', color: 'var(--ink-muted)' }}>{t.clickHint}</span>
+          <span style={{ fontSize: '0.75rem', color: 'var(--ink-muted)' }}>{t.clickHint}</span>
         </div>
 
-        <div className="table-wrap">
+        <div className="section-card-body" style={{ padding: 0 }}>
+          <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
@@ -178,8 +233,9 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
               ))}
             </tbody>
           </table>
+          </div>
         </div>
-      </div>
+      </section>
 
       {detail && (
         <div className="card card-confirmed" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -295,6 +351,7 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
                 <X size={18} />
               </button>
             </div>
+            <div className="modal-body">
 
             <div className="field-group">
               <label className="field-label" htmlFor="p-name">
@@ -377,6 +434,7 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
               >
                 Save Player
               </button>
+            </div>
             </div>
           </div>
         </div>

@@ -93,8 +93,9 @@ create table if not exists public.rally_events (
 
 create index if not exists idx_rally_events_match_seq on public.rally_events(match_id, seq);
 
--- Helpful View: Player aggregate performance
-create or replace view public.player_stats_summary as
+-- Helpful View: Player aggregate performance (security_invoker respects RLS)
+create or replace view public.player_stats_summary
+with (security_invoker = true) as
 select
   p.id as player_id,
   p.name,
@@ -109,18 +110,32 @@ left join public.match_participants mp on mp.player_id = p.id
 left join public.matches m on m.id = mp.match_id
 group by p.id, p.name, p.skill_rating;
 
--- Optional Row Level Security (uncomment and customize if using client-side Supabase Auth)
--- alter table public.players enable row level security;
--- alter table public.sessions enable row level security;
--- alter table public.session_players enable row level security;
--- alter table public.matches enable row level security;
--- alter table public.match_participants enable row level security;
--- alter table public.rally_events enable row level security;
---
--- For quick personal / private club usage with anon key, you can allow full access:
--- create policy "Allow all on players" on public.players for all using (true) with check (true);
--- create policy "Allow all on sessions" on public.sessions for all using (true) with check (true);
--- create policy "Allow all on session_players" on public.session_players for all using (true) with check (true);
--- create policy "Allow all on matches" on public.matches for all using (true) with check (true);
--- create policy "Allow all on match_participants" on public.match_participants for all using (true) with check (true);
--- create policy "Allow all on rally_events" on public.rally_events for all using (true) with check (true);
+-- 8. Row Level Security + Open Club Policies
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on all tables in schema public to anon, authenticated;
+grant usage, select on all sequences in schema public to anon, authenticated;
+
+alter table public.players enable row level security;
+alter table public.sessions enable row level security;
+alter table public.session_players enable row level security;
+alter table public.matches enable row level security;
+alter table public.match_participants enable row level security;
+alter table public.rally_events enable row level security;
+
+drop policy if exists "Allow all on players" on public.players;
+create policy "Allow all on players" on public.players for all using (true) with check (true);
+
+drop policy if exists "Allow all on sessions" on public.sessions;
+create policy "Allow all on sessions" on public.sessions for all using (true) with check (true);
+
+drop policy if exists "Allow all on session_players" on public.session_players;
+create policy "Allow all on session_players" on public.session_players for all using (true) with check (true);
+
+drop policy if exists "Allow all on matches" on public.matches;
+create policy "Allow all on matches" on public.matches for all using (true) with check (true);
+
+drop policy if exists "Allow all on match_participants" on public.match_participants;
+create policy "Allow all on match_participants" on public.match_participants for all using (true) with check (true);
+
+drop policy if exists "Allow all on rally_events" on public.rally_events;
+create policy "Allow all on rally_events" on public.rally_events for all using (true) with check (true);

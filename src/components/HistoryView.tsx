@@ -176,80 +176,90 @@ export function HistoryView({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div className="navy-section-banner">
-        <div>
-          <h1>{t.title}</h1>
-          <p className="banner-sub">{t.subtitle}</p>
-        </div>
-      </div>
-
-      <div className="stat-strip">
-        <div className="stat-box">
-          <div className="section-heading" style={{ margin: 0 }}>{t.totalMatches}</div>
-          <div className="stat-value">{matches.length}</div>
-        </div>
-        <div className="stat-box">
-          <div className="section-heading" style={{ margin: 0 }}>{t.completed}</div>
-          <div className="stat-value">{completedCount}</div>
-        </div>
-        <div className="stat-box">
-          <div className="section-heading" style={{ margin: 0 }}>{t.ralliesLogged}</div>
-          <div className="stat-value">{totalRallies}</div>
-        </div>
-        <div className="stat-box">
-          <div className="section-heading" style={{ margin: 0 }}>{t.sessions}</div>
-          <div className="stat-value">{sessions.length}</div>
-        </div>
-      </div>
-
-      <div className="card" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: '1 1 220px' }}>
-          <Search
-            size={15}
-            style={{
-              position: 'absolute',
-              left: 11,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: 'var(--ink-muted)',
-            }}
-          />
-          <input
-            className="input"
-            style={{ paddingLeft: 34 }}
-            placeholder={t.searchPlaceholder}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+      <section className="section-card is-strong-border">
+        <div className="section-card-header">
+          <div className="section-card-title">
+            <Activity size={16} />
+            <div>
+              <h1>{t.title}</h1>
+              <div className="section-card-sub">{t.subtitle}</div>
+            </div>
+          </div>
+          <span className="section-card-sub tabular-nums">
+            {matches.length} {t.totalMatches}
+          </span>
         </div>
 
-        <select
-          className="select"
-          style={{ width: 'auto', minWidth: 165 }}
-          value={playerFilter}
-          onChange={(e) => setPlayerFilter(e.target.value)}
-        >
-          <option value="all">{t.allPlayers}</option>
-          {players.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+        <div className="section-subbar" style={{ gap: 10 }}>
+          <div style={{ position: 'relative', flex: '1 1 220px' }}>
+            <Search
+              size={15}
+              style={{
+                position: 'absolute',
+                left: 11,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--ink-muted)',
+              }}
+            />
+            <input
+              className="input"
+              style={{ paddingLeft: 34 }}
+              placeholder={t.searchPlaceholder}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
 
-        <div className="segmented">
-          {(['all', 'completed', 'in_progress'] as const).map((s) => (
-            <button
-              key={s}
-              type="button"
-              className={`segmented-btn ${statusFilter === s ? 'active' : ''}`}
-              onClick={() => setStatusFilter(s)}
-            >
-              {s === 'all' ? t.all : s === 'completed' ? t.final : t.live}
-            </button>
-          ))}
+          <select
+            className="select"
+            style={{ width: 'auto', minWidth: 165 }}
+            value={playerFilter}
+            onChange={(e) => setPlayerFilter(e.target.value)}
+          >
+            <option value="all">{t.allPlayers}</option>
+            {players.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+
+          <div className="segmented">
+            {(['all', 'completed', 'in_progress'] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={`segmented-btn ${statusFilter === s ? 'active' : ''}`}
+                onClick={() => setStatusFilter(s)}
+              >
+                {s === 'all' ? t.all : s === 'completed' ? t.final : t.live}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+
+        <div className="section-card-body">
+          <div className="stat-strip">
+            <div className="stat-box">
+              <div className="section-heading" style={{ margin: 0 }}>{t.totalMatches}</div>
+              <div className="stat-value tabular-nums">{matches.length}</div>
+            </div>
+            <div className="stat-box">
+              <div className="section-heading" style={{ margin: 0 }}>{t.completed}</div>
+              <div className="stat-value tabular-nums">{completedCount}</div>
+            </div>
+            <div className="stat-box">
+              <div className="section-heading" style={{ margin: 0 }}>{t.ralliesLogged}</div>
+              <div className="stat-value tabular-nums">{totalRallies}</div>
+            </div>
+            <div className="stat-box">
+              <div className="section-heading" style={{ margin: 0 }}>{t.sessions}</div>
+              <div className="stat-value tabular-nums">{sessions.length}</div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {filtered.length === 0 ? (
         <div className="card empty-state">
@@ -364,6 +374,7 @@ export function HistoryView({
                 <X size={18} />
               </button>
             </div>
+            <div className="modal-body">
 
             <div
               style={{
@@ -461,6 +472,7 @@ export function HistoryView({
                   Close
                 </button>
               </div>
+            </div>
             </div>
           </div>
         </div>

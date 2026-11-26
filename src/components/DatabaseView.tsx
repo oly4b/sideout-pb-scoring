@@ -117,40 +117,44 @@ export function DatabaseView({ lang, dbStatus, onRefresh, onNotify }: DatabaseVi
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div className="navy-section-banner">
-        <div>
-          <h1>{t.title}</h1>
-          <p className="banner-sub">{t.subtitle}</p>
+      <section className="section-card is-strong-border">
+        <div className="section-card-header">
+          <div className="section-card-title">
+            <Database size={16} />
+            <div>
+              <h1>{t.title}</h1>
+              <div className="section-card-sub">{t.subtitle}</div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <a
+              href="/api/export-project"
+              download="sideout-pb-scoring.zip"
+              className="btn btn-navy-soft btn-sm"
+              style={{ textDecoration: 'none' }}
+            >
+              <Download size={14} /> {lang === 'ja' ? 'プロジェクトZIP' : 'Project ZIP'}
+            </a>
+            <button
+              type="button"
+              className="btn btn-navy-soft btn-sm"
+              onClick={handleExportCsv}
+              disabled={exporting}
+            >
+              <FileSpreadsheet size={14} /> {t.exportCsv}
+            </button>
+            <button
+              type="button"
+              className="btn btn-lime btn-sm"
+              onClick={handleExportJson}
+              disabled={exporting}
+            >
+              <Download size={14} /> {t.backupJson}
+            </button>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <a
-            href="/api/export-project"
-            download="sideout-pb-scoring.zip"
-            className="btn btn-primary btn-sm"
-            style={{ textDecoration: 'none' }}
-          >
-            <Download size={15} /> {lang === 'ja' ? 'プロジェクトZIP' : 'Project ZIP'}
-          </a>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={handleExportCsv}
-            disabled={exporting}
-          >
-            <FileSpreadsheet size={15} /> {t.exportCsv}
-          </button>
-          <button
-            type="button"
-            className="btn btn-lime btn-sm"
-            onClick={handleExportJson}
-            disabled={exporting}
-          >
-            <Download size={15} /> {t.backupJson}
-          </button>
-        </div>
-      </div>
 
-      <div className="card card-confirmed" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="section-card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div
           style={{
             display: 'flex',
@@ -204,10 +208,11 @@ export function DatabaseView({ lang, dbStatus, onRefresh, onNotify }: DatabaseVi
           </div>
           <div className="stat-box">
             <div className="section-heading" style={{ margin: 0 }}>rally_events</div>
-            <div className="stat-value">{dbStatus?.counts.rallies ?? 0}</div>
+            <div className="stat-value tabular-nums">{dbStatus?.counts.rallies ?? 0}</div>
           </div>
         </div>
-      </div>
+        </div>
+      </section>
 
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <span className="section-heading" style={{ margin: 0 }}>

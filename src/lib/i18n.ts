@@ -3,6 +3,7 @@ export type Lang = 'ja' | 'en';
 export const copy = {
   ja: {
     badgeTop: 'スコア管理 & セッション運営',
+    schedulerBadge: '空き状況 & 投票',
     appTitle: 'サイドアウト・スコアキーパー',
     subtitlePrefix: '岡山・倉敷ピックルボール',
     share: '共有',
@@ -43,6 +44,7 @@ export const copy = {
       rally: 'ラリーポイント',
       playTo: '勝利点',
       winByTwo: '2点差勝利',
+      autoSwitchEnds: '折り返しでエンド交代',
       startMatch: '試合を開始',
       backSetup: '← マッチ設定',
       backSession: '← セッションへ戻る',
@@ -55,6 +57,7 @@ export const copy = {
       leftOdd: '左 / 奇数',
       tapTop: '奥側がラリー勝利したらタップ',
       tapBottom: '手前側がラリー勝利したらタップ',
+      tapHere: 'このチームがラリー勝利したらタップ',
       nvz: 'ノンボレーゾーン (キッチン)',
       undo: '戻す',
       redo: 'やり直し',
@@ -115,6 +118,7 @@ export const copy = {
   },
   en: {
     badgeTop: 'Scorekeeper & Session OS',
+    schedulerBadge: 'Availability & Poll',
     appTitle: 'Sideout Scorekeeper & Sessions',
     subtitlePrefix: 'Okayama & Kurashiki Pickleball',
     share: 'Share',
@@ -155,6 +159,7 @@ export const copy = {
       rally: 'Rally',
       playTo: 'Play To',
       winByTwo: 'Win by 2',
+      autoSwitchEnds: 'Switch ends at halfway',
       startMatch: 'Start Match',
       backSetup: '← Match Setup',
       backSession: '← Back to Session',
@@ -167,6 +172,7 @@ export const copy = {
       leftOdd: 'Left / Odd',
       tapTop: 'TAP TOP COURT IF THEY WIN RALLY',
       tapBottom: 'TAP BOTTOM COURT IF YOUR SIDE WINS RALLY',
+      tapHere: 'Tap here if this team wins the rally',
       nvz: 'NON-VOLLEY ZONE',
       undo: 'Undo',
       redo: 'Redo',

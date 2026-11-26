@@ -1,8 +1,9 @@
 import {
   Activity,
+  Check,
   Database,
-  Globe,
   History,
+  Languages,
   MapPin,
   Moon,
   Share2,
@@ -28,9 +29,17 @@ export default function App() {
     const saved = localStorage.getItem('momodinks_lang');
     return saved === 'ja' ? 'ja' : 'en';
   });
+  const [hasManualTheme, setHasManualTheme] = useState<boolean>(() => {
+    const saved = localStorage.getItem('momodinks_theme');
+    return saved === 'dark' || saved === 'light';
+  });
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = localStorage.getItem('momodinks_theme');
-    return saved === 'dark' ? 'dark' : 'light';
+    if (saved === 'dark' || saved === 'light') return saved;
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
+      return 'dark';
+    }
+    return 'light';
   });
 
   const [players, setPlayers] = useState<Player[]>([]);
@@ -54,9 +63,26 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('momodinks_theme', theme);
-  }, [theme]);
+    const root = document.documentElement;
+    root.setAttribute('data-theme', theme);
+    root.classList.toggle('dark', theme === 'dark');
+    root.style.colorScheme = theme;
+    if (hasManualTheme) {
+      localStorage.setItem('momodinks_theme', theme);
+    }
+  }, [theme, hasManualTheme]);
+
+  useEffect(() => {
+    if (hasManualTheme || typeof window === 'undefined' || !window.matchMedia) {
+      return;
+    }
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (e: MediaQueryListEvent) => {
+      setTheme(e.matches ? 'dark' : 'light');
+    };
+    media.addEventListener('change', handleChange);
+    return () => media.removeEventListener('change', handleChange);
+  }, [hasManualTheme]);
 
   useEffect(() => {
     document.documentElement.setAttribute('lang', lang);
@@ -165,6 +191,19 @@ export default function App() {
   ];
 
   const dbLabel = dbStatus ? t.dbShort[dbStatus.driver] : '...';
+  const schedulerBaseUrl =
+    (import.meta.env.VITE_SESSION_SCHEDULER_URL as string | undefined)?.trim() ||
+    'http://localhost:5174';
+
+  const handleOpenScheduler = () => {
+    try {
+      const target = new URL(schedulerBaseUrl, window.location.origin);
+      target.searchParams.set('lang', lang);
+      window.location.assign(target.toString());
+    } catch {
+      window.location.assign(schedulerBaseUrl);
+    }
+  };
 
   return (
     <div className="momo-shell">
@@ -177,10 +216,26 @@ export default function App() {
             </div>
             <div className="momo-brand-meta">
               <div className="momo-badge-row">
-                <span className="momo-lime-pill">{t.badgeTop}</span>
+                <div className="momo-app-toggle" role="group" aria-label="Switch web app">
+                  <span className="momo-app-toggle-item is-active">{t.badgeTop}</span>
+                  <button
+                    type="button"
+                    className="momo-app-toggle-item tactile-press"
+                    onClick={handleOpenScheduler}
+                    title={
+                      lang === 'ja'
+                        ? 'session-scheduler に切り替える'
+                        : 'Switch to session-scheduler'
+                    }
+                  >
+                    {t.schedulerBadge} ⇄
+                  </button>
+                </div>
                 <button
                   type="button"
-                  className="momo-glass-pill"
+                  className={`momo-glass-pill tactile-press ${
+                    !dbStatus || !dbStatus.connected ? 'is-warn' : ''
+                  }`}
                   onClick={() => setTab('database')}
                   title="Database status"
                 >
@@ -199,8 +254,8 @@ export default function App() {
                 </span>
                 <span className="momo-app-sub">{t.appTitle}</span>
               </div>
-              <div className="momo-location-line">
-                <MapPin size={12} />
+              <div className="momo-location-line tabular-nums">
+                <MapPin size={14} style={{ color: 'var(--optic-lime-soft)', flexShrink: 0 }} />
                 <span>
                   {t.subtitlePrefix} · {players.length}{' '}
                   {lang === 'ja' ? '名登録' : 'Players'} · {matches.length}{' '}
@@ -219,7 +274,7 @@ export default function App() {
                 className={`lang-btn ${lang === 'ja' ? 'active' : ''}`}
                 onClick={() => setLang('ja')}
               >
-                <Globe size={12} /> JA
+                <Languages size={14} /> JA
               </button>
               <button
                 type="button"
@@ -234,7 +289,10 @@ export default function App() {
             <button
               type="button"
               className="header-theme-btn"
-              onClick={() => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))}
+              onClick={() => {
+                setHasManualTheme(true);
+                setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+              }}
               title={theme === 'light' ? t.themeDark : t.themeLight}
               aria-label="Toggle theme"
             >
@@ -246,7 +304,7 @@ export default function App() {
               className="header-share-btn"
               onClick={handleShare}
             >
-              <Share2 size={14} /> {t.share}
+              <Share2 size={16} /> {t.share}
             </button>
           </div>
         </div>
@@ -400,7 +458,8 @@ export default function App() {
       {/* Toast Feedback */}
       {toast && (
         <div className="toast" role="status" aria-live="polite">
-          {toast}
+          <Check size={16} style={{ color: 'var(--optic-lime-soft)', flexShrink: 0 }} />
+          <span>{toast}</span>
         </div>
       )}
     </div>

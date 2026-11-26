@@ -9,6 +9,7 @@ import type {
   PlayerDetailStats,
   PlayerStanding,
   RallyEvent,
+  SchedulerUpcomingPayload,
   ScoringMode,
   Session,
   SessionFormat,
@@ -156,4 +157,10 @@ export const api = {
     }),
   deleteMatch: (id: string) =>
     request<{ deleted: boolean }>(`/matches/${id}`, { method: 'DELETE' }),
+
+  // Shared session-scheduler sync
+  getSchedulerUpcoming: (minDate?: string) => {
+    const suffix = minDate ? `?minDate=${encodeURIComponent(minDate)}` : '';
+    return request<SchedulerUpcomingPayload>(`/scheduler/upcoming${suffix}`);
+  },
 };
