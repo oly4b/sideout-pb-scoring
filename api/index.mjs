@@ -408,8 +408,98 @@ function optimizeDoublesMatchups(playing, numCourts, partnerCounts, opponentCoun
   return matches;
 }
 
+// shared/ratingEngine.ts
+var BASELINE_RATING = 3;
+var SCALE_FACTOR = 0.85;
+var MIN_RATING = 2;
+var MAX_RATING = 8;
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+function clampRating(n) {
+  return round2(Math.min(MAX_RATING, Math.max(MIN_RATING, n)));
+}
+function getKFactor(gamesPlayed) {
+  if (gamesPlayed < 5) return 0.35;
+  if (gamesPlayed < 15) return 0.22;
+  return 0.12;
+}
+function computeDuprRatings(players, matches) {
+  const ratings = /* @__PURE__ */ new Map();
+  for (const p of players) {
+    ratings.set(p.id, {
+      rating: null,
+      lastDelta: null,
+      gamesPlayed: 0
+    });
+  }
+  const completed = matches.filter((m) => m.status === "completed" && m.winner_team !== null).sort((a, b) => {
+    const tA = new Date(a.completed_at ?? a.started_at).getTime();
+    const tB = new Date(b.completed_at ?? b.started_at).getTime();
+    return tA - tB;
+  });
+  const matchDeltas = /* @__PURE__ */ new Map();
+  for (const m of completed) {
+    const teamAIds = m.participants.filter((p) => p.team === "A").map((p) => p.player_id);
+    const teamBIds = m.participants.filter((p) => p.team === "B").map((p) => p.player_id);
+    if (teamAIds.length === 0 || teamBIds.length === 0) continue;
+    const allRatedOnCourt = [...teamAIds, ...teamBIds].map((id) => ratings.get(id)?.rating).filter((r) => typeof r === "number");
+    const courtFallback = allRatedOnCourt.length > 0 ? allRatedOnCourt.reduce((acc, r) => acc + r, 0) / allRatedOnCourt.length : BASELINE_RATING;
+    const getEffective = (id) => ratings.get(id)?.rating ?? courtFallback;
+    const teamARating = teamAIds.reduce((sum, id) => sum + getEffective(id), 0) / teamAIds.length;
+    const teamBRating = teamBIds.reduce((sum, id) => sum + getEffective(id), 0) / teamBIds.length;
+    const expectedA = 1 / (1 + Math.pow(10, -(teamARating - teamBRating) / SCALE_FACTOR));
+    const expectedB = 1 - expectedA;
+    const totalPoints = Math.max(1, m.team_a_score + m.team_b_score);
+    const winA = m.winner_team === "A" ? 1 : 0;
+    const winB = m.winner_team === "B" ? 1 : 0;
+    const actualA = 0.55 * winA + 0.45 * (m.team_a_score / totalPoints);
+    const actualB = 0.55 * winB + 0.45 * (m.team_b_score / totalPoints);
+    const playerDeltas = {};
+    let sumDeltaA = 0;
+    let sumDeltaB = 0;
+    for (const id of teamAIds) {
+      const state = ratings.get(id) ?? { rating: null, lastDelta: null, gamesPlayed: 0 };
+      const k = getKFactor(state.gamesPlayed);
+      const prev = state.rating ?? courtFallback;
+      const delta = round2(k * (actualA - expectedA));
+      const nextRating = clampRating(prev + delta);
+      const actualDelta = round2(nextRating - prev);
+      ratings.set(id, {
+        rating: nextRating,
+        lastDelta: actualDelta,
+        gamesPlayed: state.gamesPlayed + 1
+      });
+      playerDeltas[id] = actualDelta;
+      sumDeltaA += actualDelta;
+    }
+    for (const id of teamBIds) {
+      const state = ratings.get(id) ?? { rating: null, lastDelta: null, gamesPlayed: 0 };
+      const k = getKFactor(state.gamesPlayed);
+      const prev = state.rating ?? courtFallback;
+      const delta = round2(k * (actualB - expectedB));
+      const nextRating = clampRating(prev + delta);
+      const actualDelta = round2(nextRating - prev);
+      ratings.set(id, {
+        rating: nextRating,
+        lastDelta: actualDelta,
+        gamesPlayed: state.gamesPlayed + 1
+      });
+      playerDeltas[id] = actualDelta;
+      sumDeltaB += actualDelta;
+    }
+    matchDeltas.set(m.id, {
+      teamADelta: round2(sumDeltaA / teamAIds.length),
+      teamBDelta: round2(sumDeltaB / teamBIds.length),
+      playerDeltas
+    });
+  }
+  return { ratings, matchDeltas };
+}
+
 // shared/statsEngine.ts
 function computeStandings(players, matches) {
+  const { ratings } = computeDuprRatings(players, matches);
   const completed = matches.filter((m) => m.status === "completed" && m.winner_team !== null).sort((a, b) => {
     const tA = new Date(a.completed_at ?? a.started_at).getTime();
     const tB = new Date(b.completed_at ?? b.started_at).getTime();
@@ -417,11 +507,13 @@ function computeStandings(players, matches) {
   });
   const statsMap = /* @__PURE__ */ new Map();
   for (const p of players) {
+    const r = ratings.get(p.id);
     statsMap.set(p.id, {
       player_id: p.id,
       name: p.name,
       avatar_color: p.avatar_color,
-      skill_rating: p.skill_rating,
+      skill_rating: r ? r.rating : null,
+      rating_delta: r ? r.lastDelta : null,
       games_played: 0,
       wins: 0,
       losses: 0,
@@ -847,7 +939,7 @@ var LocalJsonAdapter = class {
       id: crypto2.randomUUID(),
       name: input.name.trim(),
       nickname: input.nickname ?? null,
-      skill_rating: input.skill_rating ?? 3.5,
+      skill_rating: input.skill_rating ?? null,
       avatar_color: input.avatar_color ?? "#1D4ED8",
       created_at: (/* @__PURE__ */ new Date()).toISOString()
     };
@@ -1037,13 +1129,19 @@ var PostgresAdapter = class {
   }
   async listPlayers() {
     const res = await this.pool.query("select * from public.players order by name asc");
-    return res.rows.map((r) => ({ ...r, skill_rating: Number(r.skill_rating ?? 3.5) }));
+    return res.rows.map((r) => ({
+      ...r,
+      skill_rating: r.skill_rating !== null && r.skill_rating !== void 0 ? Number(r.skill_rating) : null
+    }));
   }
   async getPlayer(id) {
     const res = await this.pool.query("select * from public.players where id = $1", [id]);
     if (res.rowCount === 0) return null;
     const r = res.rows[0];
-    return { ...r, skill_rating: Number(r.skill_rating ?? 3.5) };
+    return {
+      ...r,
+      skill_rating: r.skill_rating !== null && r.skill_rating !== void 0 ? Number(r.skill_rating) : null
+    };
   }
   async createPlayer(input) {
     const res = await this.pool.query(
@@ -1053,12 +1151,15 @@ var PostgresAdapter = class {
       [
         input.name.trim(),
         input.nickname ?? null,
-        input.skill_rating ?? 3.5,
+        input.skill_rating ?? null,
         input.avatar_color ?? "#1D4ED8"
       ]
     );
     const r = res.rows[0];
-    return { ...r, skill_rating: Number(r.skill_rating ?? 3.5) };
+    return {
+      ...r,
+      skill_rating: r.skill_rating !== null && r.skill_rating !== void 0 ? Number(r.skill_rating) : null
+    };
   }
   async updatePlayer(id, input) {
     const existing = await this.getPlayer(id);
@@ -1072,12 +1173,15 @@ var PostgresAdapter = class {
         id,
         input.name ?? existing.name,
         input.nickname !== void 0 ? input.nickname : existing.nickname,
-        input.skill_rating ?? existing.skill_rating,
+        input.skill_rating !== void 0 ? input.skill_rating : existing.skill_rating,
         input.avatar_color ?? existing.avatar_color
       ]
     );
     const r = res.rows[0];
-    return { ...r, skill_rating: Number(r.skill_rating ?? 3.5) };
+    return {
+      ...r,
+      skill_rating: r.skill_rating !== null && r.skill_rating !== void 0 ? Number(r.skill_rating) : null
+    };
   }
   async deletePlayer(id) {
     const res = await this.pool.query("delete from public.players where id = $1", [id]);
@@ -1447,29 +1551,38 @@ var SupabaseAdapter = class {
     if (error) throw new Error(error.message);
     return (data ?? []).map((row) => ({
       ...row,
-      skill_rating: Number(row.skill_rating ?? 3.5)
+      skill_rating: row.skill_rating !== null && row.skill_rating !== void 0 ? Number(row.skill_rating) : null
     }));
   }
   async getPlayer(id) {
     const { data, error } = await this.client.from("players").select("*").eq("id", id).maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) return null;
-    return { ...data, skill_rating: Number(data.skill_rating ?? 3.5) };
+    return {
+      ...data,
+      skill_rating: data.skill_rating !== null && data.skill_rating !== void 0 ? Number(data.skill_rating) : null
+    };
   }
   async createPlayer(input) {
     const { data, error } = await this.client.from("players").insert({
       name: input.name.trim(),
       nickname: input.nickname ?? null,
-      skill_rating: input.skill_rating ?? 3.5,
+      skill_rating: input.skill_rating ?? null,
       avatar_color: input.avatar_color ?? "#1D4ED8"
     }).select("*").single();
     if (error) throw new Error(error.message);
-    return { ...data, skill_rating: Number(data.skill_rating ?? 3.5) };
+    return {
+      ...data,
+      skill_rating: data.skill_rating !== null && data.skill_rating !== void 0 ? Number(data.skill_rating) : null
+    };
   }
   async updatePlayer(id, input) {
     const { data, error } = await this.client.from("players").update(input).eq("id", id).select("*").maybeSingle();
     if (error) throw new Error(error.message);
-    return data ? { ...data, skill_rating: Number(data.skill_rating ?? 3.5) } : null;
+    return data ? {
+      ...data,
+      skill_rating: data.skill_rating !== null && data.skill_rating !== void 0 ? Number(data.skill_rating) : null
+    } : null;
   }
   async deletePlayer(id) {
     const { error } = await this.client.from("players").delete().eq("id", id);
@@ -1994,7 +2107,7 @@ app.get("/api/players", async (_req, res) => {
           if (!sp.name.trim()) continue;
           await repo.createPlayer({
             name: sp.name.trim(),
-            skill_rating: 3.5,
+            skill_rating: null,
             avatar_color: SEED_COLORS[i % SEED_COLORS.length]
           });
         }

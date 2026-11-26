@@ -26,6 +26,7 @@ import {
   swapTeamBoxesManually,
   undoLastRally,
 } from '../../shared/pickleballEngine';
+import { formatRating } from '../../shared/ratingEngine';
 import type {
   GameType,
   LiveGameState,
@@ -442,7 +443,7 @@ export function ScorekeeperView({
                 >
                   {players.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} ({p.skill_rating.toFixed(2)})
+                      {p.name} ({formatRating(p.skill_rating)})
                     </option>
                   ))}
                 </select>
@@ -460,7 +461,7 @@ export function ScorekeeperView({
                   >
                     {players.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.name} ({p.skill_rating.toFixed(2)})
+                        {p.name} ({formatRating(p.skill_rating)})
                       </option>
                     ))}
                   </select>
@@ -494,7 +495,7 @@ export function ScorekeeperView({
                 >
                   {players.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} ({p.skill_rating.toFixed(2)})
+                      {p.name} ({formatRating(p.skill_rating)})
                     </option>
                   ))}
                 </select>
@@ -512,7 +513,7 @@ export function ScorekeeperView({
                   >
                     {players.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.name} ({p.skill_rating.toFixed(2)})
+                        {p.name} ({formatRating(p.skill_rating)})
                       </option>
                     ))}
                   </select>

@@ -1,5 +1,6 @@
 import { Plus, RefreshCw, Swords, Trash2, Trophy, UserCheck, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { formatRating } from '../../shared/ratingEngine';
 import { computePlayerDetailStats, computeStandings } from '../../shared/statsEngine';
 import type { Match, Player } from '../../shared/types';
 import { api } from '../lib/api';
@@ -21,7 +22,7 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
   const [showModal, setShowModal] = useState(false);
   const [name, setName] = useState('');
   const [nickname, setNickname] = useState('');
-  const [rating, setRating] = useState('3.50');
+  const [rating, setRating] = useState('');
   const [color, setColor] = useState(SWATCHES[0]);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -46,7 +47,7 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
         if (!key || existingNames.has(key)) continue;
         await api.createPlayer({
           name: sp.name.trim(),
-          skill_rating: 3.5,
+          skill_rating: null,
           avatar_color: SWATCHES[(players.length + added) % SWATCHES.length],
         });
         existingNames.add(key);
@@ -87,15 +88,18 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
     }
     try {
       setSaving(true);
+      const parsedRating = rating.trim()
+        ? Math.min(8, Math.max(1, Number(rating)))
+        : null;
       await api.createPlayer({
         name: name.trim(),
         nickname: nickname.trim() || undefined,
-        skill_rating: Math.min(8, Math.max(1, Number(rating) || 3.5)),
+        skill_rating: Number.isFinite(parsedRating) ? parsedRating : null,
         avatar_color: color,
       });
       setName('');
       setNickname('');
-      setRating('3.50');
+      setRating('');
       setShowModal(false);
       await onRefreshAll();
       onNotify('Player added to roster');
@@ -208,7 +212,23 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
                       <span style={{ fontWeight: 700 }}>{row.name}</span>
                     </div>
                   </td>
-                  <td className="num">{row.skill_rating.toFixed(2)}</td>
+                  <td className="num">
+                    <span style={{ fontWeight: 700 }}>{formatRating(row.skill_rating)}</span>
+                    {typeof row.rating_delta === 'number' && row.rating_delta !== 0 && (
+                      <span
+                        style={{
+                          marginLeft: 5,
+                          fontSize: '0.7rem',
+                          fontWeight: 800,
+                          color: row.rating_delta > 0 ? 'var(--brand-emerald)' : 'var(--danger)',
+                        }}
+                      >
+                        {row.rating_delta > 0
+                          ? `+${row.rating_delta.toFixed(2)}`
+                          : row.rating_delta.toFixed(2)}
+                      </span>
+                    )}
+                  </td>
                   <td className="num">
                     {row.wins}-{row.losses}
                   </td>
@@ -260,7 +280,7 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
               <div>
                 <h2 style={{ margin: 0, fontSize: '1.18rem', fontWeight: 800 }}>{detail.name}</h2>
                 <div style={{ fontSize: '0.84rem', color: 'var(--ink-secondary)', marginTop: 2 }}>
-                  Skill {detail.skill_rating.toFixed(2)} · {detail.wins}W – {detail.losses}L (
+                  Skill {formatRating(detail.skill_rating)} · {detail.wins}W – {detail.losses}L (
                   {detail.win_pct}%) · Diff{' '}
                   {detail.point_diff > 0 ? `+${detail.point_diff}` : detail.point_diff}
                 </div>

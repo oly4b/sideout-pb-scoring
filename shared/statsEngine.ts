@@ -1,6 +1,8 @@
+import { computeDuprRatings } from './ratingEngine';
 import type { Match, PairRecord, Player, PlayerDetailStats, PlayerStanding } from './types';
 
 export function computeStandings(players: Player[], matches: Match[]): PlayerStanding[] {
+  const { ratings } = computeDuprRatings(players, matches);
   const completed = matches
     .filter((m) => m.status === 'completed' && m.winner_team !== null)
     .sort((a, b) => {
@@ -11,11 +13,13 @@ export function computeStandings(players: Player[], matches: Match[]): PlayerSta
 
   const statsMap = new Map<string, PlayerStanding>();
   for (const p of players) {
+    const r = ratings.get(p.id);
     statsMap.set(p.id, {
       player_id: p.id,
       name: p.name,
       avatar_color: p.avatar_color,
-      skill_rating: p.skill_rating,
+      skill_rating: r ? r.rating : null,
+      rating_delta: r ? r.lastDelta : null,
       games_played: 0,
       wins: 0,
       losses: 0,

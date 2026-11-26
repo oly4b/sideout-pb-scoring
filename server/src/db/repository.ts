@@ -19,14 +19,14 @@ import type {
 export interface CreatePlayerInput {
   name: string;
   nickname?: string | null;
-  skill_rating?: number;
+  skill_rating?: number | null;
   avatar_color?: string;
 }
 
 export interface UpdatePlayerInput {
   name?: string;
   nickname?: string | null;
-  skill_rating?: number;
+  skill_rating?: number | null;
   avatar_color?: string;
 }
 

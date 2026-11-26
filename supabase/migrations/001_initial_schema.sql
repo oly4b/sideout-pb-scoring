@@ -8,7 +8,7 @@ create table if not exists public.players (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   nickname text,
-  skill_rating numeric(3, 2) default 3.50 check (skill_rating >= 1.00 and skill_rating <= 8.00),
+  skill_rating numeric(3, 2) default null check (skill_rating is null or (skill_rating >= 1.00 and skill_rating <= 8.00)),
   avatar_color text not null default '#1D4ED8',
   created_at timestamptz not null default now()
 );

@@ -68,14 +68,22 @@ export class PostgresAdapter implements DataRepository {
 
   async listPlayers(): Promise<Player[]> {
     const res = await this.pool.query('select * from public.players order by name asc');
-    return res.rows.map((r) => ({ ...r, skill_rating: Number(r.skill_rating ?? 3.5) }));
+    return res.rows.map((r) => ({
+      ...r,
+      skill_rating:
+        r.skill_rating !== null && r.skill_rating !== undefined ? Number(r.skill_rating) : null,
+    }));
   }
 
   async getPlayer(id: string): Promise<Player | null> {
     const res = await this.pool.query('select * from public.players where id = $1', [id]);
     if (res.rowCount === 0) return null;
     const r = res.rows[0];
-    return { ...r, skill_rating: Number(r.skill_rating ?? 3.5) };
+    return {
+      ...r,
+      skill_rating:
+        r.skill_rating !== null && r.skill_rating !== undefined ? Number(r.skill_rating) : null,
+    };
   }
 
   async createPlayer(input: CreatePlayerInput): Promise<Player> {
@@ -86,12 +94,16 @@ export class PostgresAdapter implements DataRepository {
       [
         input.name.trim(),
         input.nickname ?? null,
-        input.skill_rating ?? 3.5,
+        input.skill_rating ?? null,
         input.avatar_color ?? '#1D4ED8',
       ]
     );
     const r = res.rows[0];
-    return { ...r, skill_rating: Number(r.skill_rating ?? 3.5) };
+    return {
+      ...r,
+      skill_rating:
+        r.skill_rating !== null && r.skill_rating !== undefined ? Number(r.skill_rating) : null,
+    };
   }
 
   async updatePlayer(id: string, input: UpdatePlayerInput): Promise<Player | null> {
@@ -106,12 +118,16 @@ export class PostgresAdapter implements DataRepository {
         id,
         input.name ?? existing.name,
         input.nickname !== undefined ? input.nickname : existing.nickname,
-        input.skill_rating ?? existing.skill_rating,
+        input.skill_rating !== undefined ? input.skill_rating : existing.skill_rating,
         input.avatar_color ?? existing.avatar_color,
       ]
     );
     const r = res.rows[0];
-    return { ...r, skill_rating: Number(r.skill_rating ?? 3.5) };
+    return {
+      ...r,
+      skill_rating:
+        r.skill_rating !== null && r.skill_rating !== undefined ? Number(r.skill_rating) : null,
+    };
   }
 
   async deletePlayer(id: string): Promise<boolean> {

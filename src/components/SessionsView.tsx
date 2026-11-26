@@ -152,7 +152,7 @@ export function SessionsView({
         } else {
           const created = await api.createPlayer({
             name: att.attendee_name.trim(),
-            skill_rating: 3.5,
+            skill_rating: null,
             avatar_color:
               AVATAR_COLORS[(players.length + createdCount) % AVATAR_COLORS.length],
           });
@@ -225,7 +225,7 @@ export function SessionsView({
     try {
       const created = await api.createPlayer({
         name: trimmed,
-        skill_rating: 3.5,
+        skill_rating: null,
         avatar_color: AVATAR_COLORS[players.length % AVATAR_COLORS.length],
       });
       onPlayerCreated(created);

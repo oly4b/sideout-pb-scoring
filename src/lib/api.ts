@@ -56,7 +56,7 @@ export const api = {
   createPlayer: (input: {
     name: string;
     nickname?: string;
-    skill_rating?: number;
+    skill_rating?: number | null;
     avatar_color?: string;
   }) =>
     request<Player>('/players', {

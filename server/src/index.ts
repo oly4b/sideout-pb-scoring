@@ -86,7 +86,7 @@ app.get('/api/players', async (_req, res) => {
           if (!sp.name.trim()) continue;
           await repo.createPlayer({
             name: sp.name.trim(),
-            skill_rating: 3.5,
+            skill_rating: null,
             avatar_color: SEED_COLORS[i % SEED_COLORS.length],
           });
         }

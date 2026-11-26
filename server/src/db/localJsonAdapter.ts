@@ -311,7 +311,7 @@ export class LocalJsonAdapter implements DataRepository {
       id: crypto.randomUUID(),
       name: input.name.trim(),
       nickname: input.nickname ?? null,
-      skill_rating: input.skill_rating ?? 3.5,
+      skill_rating: input.skill_rating ?? null,
       avatar_color: input.avatar_color ?? '#1D4ED8',
       created_at: new Date().toISOString(),
     };

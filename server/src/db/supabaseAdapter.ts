@@ -79,7 +79,10 @@ export class SupabaseAdapter implements DataRepository {
     if (error) throw new Error(error.message);
     return (data ?? []).map((row) => ({
       ...row,
-      skill_rating: Number(row.skill_rating ?? 3.5),
+      skill_rating:
+        row.skill_rating !== null && row.skill_rating !== undefined
+          ? Number(row.skill_rating)
+          : null,
     }));
   }
 
@@ -87,7 +90,13 @@ export class SupabaseAdapter implements DataRepository {
     const { data, error } = await this.client.from('players').select('*').eq('id', id).maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) return null;
-    return { ...data, skill_rating: Number(data.skill_rating ?? 3.5) };
+    return {
+      ...data,
+      skill_rating:
+        data.skill_rating !== null && data.skill_rating !== undefined
+          ? Number(data.skill_rating)
+          : null,
+    };
   }
 
   async createPlayer(input: CreatePlayerInput): Promise<Player> {
@@ -96,13 +105,19 @@ export class SupabaseAdapter implements DataRepository {
       .insert({
         name: input.name.trim(),
         nickname: input.nickname ?? null,
-        skill_rating: input.skill_rating ?? 3.5,
+        skill_rating: input.skill_rating ?? null,
         avatar_color: input.avatar_color ?? '#1D4ED8',
       })
       .select('*')
       .single();
     if (error) throw new Error(error.message);
-    return { ...data, skill_rating: Number(data.skill_rating ?? 3.5) };
+    return {
+      ...data,
+      skill_rating:
+        data.skill_rating !== null && data.skill_rating !== undefined
+          ? Number(data.skill_rating)
+          : null,
+    };
   }
 
   async updatePlayer(id: string, input: UpdatePlayerInput): Promise<Player | null> {
@@ -113,7 +128,15 @@ export class SupabaseAdapter implements DataRepository {
       .select('*')
       .maybeSingle();
     if (error) throw new Error(error.message);
-    return data ? { ...data, skill_rating: Number(data.skill_rating ?? 3.5) } : null;
+    return data
+      ? {
+          ...data,
+          skill_rating:
+            data.skill_rating !== null && data.skill_rating !== undefined
+              ? Number(data.skill_rating)
+              : null,
+        }
+      : null;
   }
 
   async deletePlayer(id: string): Promise<boolean> {

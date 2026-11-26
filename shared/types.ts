@@ -16,7 +16,7 @@ export interface Player {
   id: string;
   name: string;
   nickname?: string | null;
-  skill_rating: number;
+  skill_rating: number | null;
   avatar_color: string;
   created_at: string;
 }
@@ -130,7 +130,8 @@ export interface PlayerStanding {
   player_id: string;
   name: string;
   avatar_color: string;
-  skill_rating: number;
+  skill_rating: number | null;
+  rating_delta?: number | null;
   games_played: number;
   wins: number;
   losses: number;
