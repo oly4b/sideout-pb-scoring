@@ -1,9 +1,10 @@
 import {
-  ArrowLeftRight,
   Award,
   CheckCircle2,
   Eye,
   LayoutGrid,
+  Maximize2,
+  Minimize2,
   Monitor,
   Play,
   Redo2,
@@ -153,6 +154,35 @@ export function ScorekeeperView({
   } | null>(null);
   const setupShellRef = useRef<HTMLDivElement | null>(null);
   const scoringSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const fullscreenBoardRef = useRef<HTMLDivElement | null>(null);
+  const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      setIsNativeFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+
+  useEffect(() => {
+    if (viewMode !== 'scoreboard') return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !document.fullscreenElement) {
+        setViewMode('court');
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [viewMode]);
+
+  const toggleNativeFullscreen = () => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {});
+      return;
+    }
+    void fullscreenBoardRef.current?.requestFullscreen?.().catch(() => {});
+  };
 
   useEffect(() => {
     if (players.length >= 4 && !teamA1 && !teamB1) {
@@ -951,6 +981,64 @@ export function ScorekeeperView({
   const gamePointTeam = isGamePoint(liveState);
   const momentum = computeMomentum(liveState.rallies);
 
+  // Hybrid chess-style advantage bar: 75% progress-weighted score lead + 25% recent 5-rally momentum
+  const evalPercentA = (() => {
+    if (liveState.winnerTeam === 'A') return 100;
+    if (liveState.winnerTeam === 'B') return 0;
+    const diff = liveState.teamAScore - liveState.teamBScore;
+    const progress = Math.min(
+      1,
+      Math.max(liveState.teamAScore, liveState.teamBScore) / Math.max(1, liveState.targetScore)
+    );
+    const scale = 4.5 - 2.2 * progress;
+    const serveEdge =
+      liveState.rallies.length > 0 && liveState.scoringMode === 'side_out'
+        ? liveState.servingTeam === 'A'
+          ? 0.2
+          : -0.2
+        : 0;
+    const scoreAdv = Math.tanh((diff + serveEdge) / scale);
+    const lastFive = liveState.rallies.slice(-5);
+    const recentNet =
+      lastFive.length > 0
+        ? lastFive.reduce((acc, r) => acc + (r.rally_winner === 'A' ? 1 : -1), 0) / 5
+        : 0;
+    const blended = 0.75 * scoreAdv + 0.25 * recentNet;
+    return Math.max(4, Math.min(96, Math.round(50 + blended * 46)));
+  })();
+
+  const toggleViewMode = () => {
+    if (viewMode === 'scoreboard') {
+      if (document.fullscreenElement) {
+        void document.exitFullscreen().catch(() => {});
+      }
+      setViewMode('court');
+    } else {
+      setViewMode('scoreboard');
+    }
+  };
+
+  const renderViewModeSlider = () => (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={viewMode === 'scoreboard'}
+      aria-label={lang === 'ja' ? 'コート・ボード表示切替' : 'Toggle court and board mode'}
+      className={`view-mode-slider ${viewMode === 'scoreboard' ? 'is-board' : ''}`}
+      onClick={toggleViewMode}
+    >
+      <span className="view-mode-thumb" aria-hidden="true" />
+      <span className={`view-mode-option ${viewMode === 'court' ? 'is-active' : ''}`}>
+        <LayoutGrid size={13} />
+        {t.court}
+      </span>
+      <span className={`view-mode-option ${viewMode === 'scoreboard' ? 'is-active' : ''}`}>
+        <Monitor size={13} />
+        {t.board}
+      </span>
+    </button>
+  );
+
   return (
     <div className="scorekeeper-shell">
       <div className="scorekeeper-header-bar">
@@ -983,24 +1071,7 @@ export function ScorekeeperView({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div className="segmented">
-            <button
-              type="button"
-              className={`segmented-btn ${viewMode === 'court' ? 'active' : ''}`}
-              onClick={() => setViewMode('court')}
-            >
-              <LayoutGrid size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} />
-              {t.court}
-            </button>
-            <button
-              type="button"
-              className={`segmented-btn ${viewMode === 'scoreboard' ? 'active' : ''}`}
-              onClick={() => setViewMode('scoreboard')}
-            >
-              <Monitor size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} />
-              {t.board}
-            </button>
-          </div>
+          {renderViewModeSlider()}
           <button
             type="button"
             className={`btn btn-icon ${soundEnabled ? 'btn-lime' : 'btn-secondary'}`}
@@ -1150,59 +1221,183 @@ export function ScorekeeperView({
           }}
         />
       ) : (
-        <>
-          <div className="callout-banner">
-            <div className="callout-meta">
-              <span className="callout-label">
+        <div ref={fullscreenBoardRef} className="fs-board-shell">
+          {/* Top Bar */}
+          <div className="fs-board-topbar">
+            <div className="fs-board-meta">
+              <span className="tag" style={{ fontSize: '0.82rem', fontWeight: 800 }}>
+                {liveState.scoringMode === 'side_out'
+                  ? lang === 'ja'
+                    ? 'サイドアウト'
+                    : 'SIDE-OUT'
+                  : lang === 'ja'
+                    ? 'ラリー'
+                    : 'RALLY'}{' '}
+                · {liveState.targetScore}
+              </span>
+              <span className="tag" style={{ fontSize: '0.82rem', fontVariantNumeric: 'tabular-nums' }}>
+                {formatDuration(elapsedSeconds)}
+              </span>
+              <button
+                type="button"
+                id="btn-undo-rally"
+                className="btn btn-secondary btn-sm"
+                onClick={handleUndo}
+                disabled={liveState.rallies.length === 0 || spectatorMode}
+              >
+                <Undo2 size={14} /> {t.undo}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleRedo}
+                disabled={liveState.redoStack.length === 0 || spectatorMode}
+              >
+                <Redo2 size={14} /> {t.redo}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleSwapServer}
+                disabled={Boolean(liveState.winnerTeam) || spectatorMode}
+              >
+                <RotateCcw size={14} /> {t.fixServer}
+              </button>
+              {gamePointTeam && (
+                <span className="tag tag-lime" style={{ fontSize: '0.85rem', fontWeight: 900 }}>
+                  GAME POINT ·{' '}
+                  {gamePointTeam === 'A' ? activeMatch.team_a_name : activeMatch.team_b_name}
+                </span>
+              )}
+              {liveState.winnerTeam && (
+                <span className="tag tag-lime" style={{ fontSize: '0.88rem', fontWeight: 900 }}>
+                  <Award size={14} />{' '}
+                  {liveState.winnerTeam === 'A' ? activeMatch.team_a_name : activeMatch.team_b_name}{' '}
+                  {lang === 'ja' ? '勝利' : 'WINS'}
+                </span>
+              )}
+            </div>
+
+            <div className="fs-board-callout-wrap">
+              <span className="fs-board-callout-label">
                 {liveState.winnerTeam ? t.finalScore : t.officialCallout}
               </span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <span className="callout-digits" id="live-callout-display">
-                  {callout}
-                </span>
-                {gamePointTeam && (
-                  <span className="tag tag-lime">
-                    GAME POINT · {gamePointTeam === 'A' ? activeMatch.team_a_name : activeMatch.team_b_name}
-                  </span>
-                )}
-              </div>
+              <span className="fs-board-callout-digits" id="live-callout-display">
+                {callout}
+              </span>
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <div className="callout-server-note">
-                {t.serving}:{' '}
-                <strong>
-                  {playerDisplay(
-                    serverPlayerId,
-                    liveState.servingTeam === 'A' ? activeMatch.team_a_name : activeMatch.team_b_name
-                  )}
-                </strong>{' '}
-                ({serverSide === 'right' ? t.rightEven : t.leftOdd})
-              </div>
+
+            <div className="fs-board-actions">
+              <button
+                type="button"
+                className={`btn btn-sm ${detailedStats ? 'btn-lime' : 'btn-secondary'}`}
+                aria-pressed={detailedStats}
+                onClick={() => {
+                  const nextVal = !detailedStats;
+                  setDetailedStats(nextVal);
+                  if (!nextVal) {
+                    setPendingTagSeq(null);
+                  }
+                  onNotify(
+                    lang === 'ja'
+                      ? nextVal
+                        ? '詳細統計タグをオンにしました'
+                        : '詳細統計タグをオフにしました'
+                      : nextVal
+                        ? 'Detailed rally tagging enabled'
+                        : 'Detailed rally tagging disabled'
+                  );
+                }}
+              >
+                {lang === 'ja' ? '詳細統計' : 'Stats'}: {detailedStats ? 'ON' : 'OFF'}
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${spectatorMode ? 'btn-lime' : 'btn-secondary'}`}
+                aria-pressed={spectatorMode}
+                onClick={() => {
+                  const nextSpec = !spectatorMode;
+                  setSpectatorMode(nextSpec);
+                  markScorekeeperForMatch(activeMatch.id, !nextSpec);
+                  if (nextSpec) setPendingTagSeq(null);
+                  onNotify(
+                    lang === 'ja'
+                      ? nextSpec
+                        ? '観戦モード（読み取り専用・自動同期）'
+                        : 'スコア入力モードに戻りました'
+                      : nextSpec
+                        ? 'Spectator mode (read-only live sync)'
+                        : 'Scorekeeper input enabled'
+                  );
+                }}
+              >
+                <Eye size={13} />
+                {lang === 'ja' ? '観戦' : 'Spectator'}
+              </button>
+              {liveState.winnerTeam ? (
+                <button type="button" className="btn btn-lime btn-sm" onClick={handleRematch}>
+                  <RefreshCw size={14} /> {t.rematch}
+                </button>
+              ) : (
+                !spectatorMode && (
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={handleFinishEarly}
+                    disabled={saving}
+                  >
+                    <CheckCircle2 size={14} /> {t.endSave}
+                  </button>
+                )
+              )}
+              <button
+                type="button"
+                className="btn btn-secondary btn-icon"
+                onClick={toggleNativeFullscreen}
+                aria-label={isNativeFullscreen ? 'Exit browser fullscreen' : 'Enter browser fullscreen'}
+                title={isNativeFullscreen ? 'Exit browser fullscreen' : 'Enter browser fullscreen'}
+              >
+                {isNativeFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+              </button>
+              {renderViewModeSlider()}
             </div>
           </div>
 
-          <div className="scoreboard-grid">
+          {/* 5m-Readable Giant Score Tiles */}
+          <div className="fs-board-grid">
             <button
               type="button"
               id="btn-rally-team-a"
-              className={`scoreboard-tile ${liveState.servingTeam === 'A' ? 'serving-a' : ''}`}
+              className={`fs-board-tile ${
+                liveState.winnerTeam === 'A' || (liveState.servingTeam === 'A' && !liveState.winnerTeam)
+                  ? 'is-serving-a'
+                  : ''
+              }`}
+              style={{
+                opacity: liveState.winnerTeam && liveState.winnerTeam !== 'A' ? 0.45 : 1,
+              }}
               onClick={() => handleRally('A')}
-              disabled={Boolean(liveState.winnerTeam)}
+              disabled={Boolean(liveState.winnerTeam) || spectatorMode}
             >
-              <span className="tag tag-team-a">TEAM A</span>
-              <div style={{ fontWeight: 800, fontSize: '1.15rem' }}>{activeMatch.team_a_name}</div>
-              <div className="scoreboard-big-num" style={{ color: 'var(--team-a)' }}>
+              <span className="fs-board-team-name" style={{ color: 'var(--team-a)' }}>
+                {activeMatch.team_a_name}
+              </span>
+              <span className="fs-board-score" style={{ color: 'var(--team-a)' }}>
                 {liveState.teamAScore}
-              </div>
+              </span>
               {liveState.servingTeam === 'A' && !liveState.winnerTeam ? (
-                <span className="tag tag-lime">
+                <span className="fs-board-status-pill is-active">
                   {t.serving} · {playerDisplay(serverPlayerId, 'Server')}
                   {liveState.gameType === 'doubles' && liveState.scoringMode === 'side_out'
                     ? ` (#${liveState.serverNumber})`
                     : ''}
+                  {' · '}
+                  {serverSide === 'right' ? (lang === 'ja' ? '右' : 'R') : lang === 'ja' ? '左' : 'L'}
                 </span>
               ) : liveState.winnerTeam ? (
-                <span className={`tag ${liveState.winnerTeam === 'A' ? 'tag-lime' : ''}`}>
+                <span
+                  className={`fs-board-status-pill ${liveState.winnerTeam === 'A' ? 'is-active' : ''}`}
+                >
                   {liveState.winnerTeam === 'A'
                     ? lang === 'ja'
                       ? '勝利'
@@ -1212,31 +1407,43 @@ export function ScorekeeperView({
                       : 'FINAL'}
                 </span>
               ) : (
-                <span style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>{t.tapHere}</span>
+                <span className="fs-board-status-pill">{t.tapHere}</span>
               )}
             </button>
 
             <button
               type="button"
               id="btn-rally-team-b"
-              className={`scoreboard-tile ${liveState.servingTeam === 'B' ? 'serving-b' : ''}`}
+              className={`fs-board-tile ${
+                liveState.winnerTeam === 'B' || (liveState.servingTeam === 'B' && !liveState.winnerTeam)
+                  ? 'is-serving-b'
+                  : ''
+              }`}
+              style={{
+                opacity: liveState.winnerTeam && liveState.winnerTeam !== 'B' ? 0.45 : 1,
+              }}
               onClick={() => handleRally('B')}
-              disabled={Boolean(liveState.winnerTeam)}
+              disabled={Boolean(liveState.winnerTeam) || spectatorMode}
             >
-              <span className="tag tag-team-b">TEAM B</span>
-              <div style={{ fontWeight: 800, fontSize: '1.15rem' }}>{activeMatch.team_b_name}</div>
-              <div className="scoreboard-big-num" style={{ color: 'var(--team-b)' }}>
+              <span className="fs-board-team-name" style={{ color: 'var(--team-b)' }}>
+                {activeMatch.team_b_name}
+              </span>
+              <span className="fs-board-score" style={{ color: 'var(--team-b)' }}>
                 {liveState.teamBScore}
-              </div>
+              </span>
               {liveState.servingTeam === 'B' && !liveState.winnerTeam ? (
-                <span className="tag tag-lime">
+                <span className="fs-board-status-pill is-active">
                   {t.serving} · {playerDisplay(serverPlayerId, 'Server')}
                   {liveState.gameType === 'doubles' && liveState.scoringMode === 'side_out'
                     ? ` (#${liveState.serverNumber})`
                     : ''}
+                  {' · '}
+                  {serverSide === 'right' ? (lang === 'ja' ? '右' : 'R') : lang === 'ja' ? '左' : 'L'}
                 </span>
               ) : liveState.winnerTeam ? (
-                <span className={`tag ${liveState.winnerTeam === 'B' ? 'tag-lime' : ''}`}>
+                <span
+                  className={`fs-board-status-pill ${liveState.winnerTeam === 'B' ? 'is-active' : ''}`}
+                >
                   {liveState.winnerTeam === 'B'
                     ? lang === 'ja'
                       ? '勝利'
@@ -1246,72 +1453,25 @@ export function ScorekeeperView({
                       : 'FINAL'}
                 </span>
               ) : (
-                <span style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>{t.tapHere}</span>
+                <span className="fs-board-status-pill">{t.tapHere}</span>
               )}
             </button>
           </div>
 
-          <div className="card controls-strip">
-            <div className="controls-group">
-              <button
-                type="button"
-                id="btn-undo-rally"
-                className="btn btn-secondary btn-sm"
-                onClick={handleUndo}
-                disabled={liveState.rallies.length === 0}
-              >
-                <Undo2 size={15} /> {t.undo}
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={handleRedo}
-                disabled={liveState.redoStack.length === 0}
-              >
-                <Redo2 size={15} /> {t.redo}
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={handleSwapServer}
-                disabled={Boolean(liveState.winnerTeam)}
-              >
-                <RotateCcw size={15} /> {t.fixServer}
-              </button>
-              {liveState.gameType === 'doubles' && (
-                <>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => handleSwapBoxes('A')}
-                    disabled={Boolean(liveState.winnerTeam)}
-                  >
-                    <ArrowLeftRight size={14} /> {t.swapA}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => handleSwapBoxes('B')}
-                    disabled={Boolean(liveState.winnerTeam)}
-                  >
-                    <ArrowLeftRight size={14} /> {t.swapB}
-                  </button>
-                </>
-              )}
+          {/* Bottom Chess-Style Advantage Bar */}
+          <div className="fs-board-eval-wrap" aria-label="Match advantage bar">
+            <div className="fs-board-eval-track">
+              <div
+                className="fs-board-eval-fill-a"
+                style={{
+                  width: `${evalPercentA}%`,
+                  borderRadius: evalPercentA >= 100 ? 999 : '999px 0 0 999px',
+                }}
+              />
+              <div className="fs-board-eval-center-tick" aria-hidden="true" />
             </div>
-
-            {!liveState.winnerTeam && (
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                onClick={handleFinishEarly}
-                disabled={saving}
-              >
-                <CheckCircle2 size={15} /> {t.endSave}
-              </button>
-            )}
           </div>
-        </>
+        </div>
       )}
       </div>
 
