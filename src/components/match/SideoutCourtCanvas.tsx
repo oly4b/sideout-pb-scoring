@@ -207,7 +207,7 @@ export function SideoutCourtCanvas({
       }
       transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
     >
-      {/* Scroll-centering anchor: midpoint between net (y=264) and bottom NVZ line (y=346) */}
+      {/* Scroll-centering anchor: bottom NVZ line (y=346 in 540 viewBox) */}
       <div
         data-court-center-anchor="true"
         aria-hidden="true"
@@ -215,7 +215,7 @@ export function SideoutCourtCanvas({
           position: 'absolute',
           left: 0,
           right: 0,
-          top: '56.5%',
+          top: '64%',
           height: 1,
           pointerEvents: 'none',
         }}
