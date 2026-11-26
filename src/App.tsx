@@ -2,7 +2,6 @@ import {
   Activity,
   Calendar,
   Check,
-  Database,
   History,
   Languages,
   MapPin,
@@ -188,7 +187,6 @@ export default function App() {
     { id: 'sessions', label: t.tabs.sessions, icon: Users, badge: activeSessionCount || undefined },
     { id: 'history', label: t.tabs.history, icon: History, badge: matches.length || undefined },
     { id: 'players', label: t.tabs.players, icon: Trophy },
-    { id: 'database', label: t.tabs.database, icon: Database },
   ];
 
   const dbLabel = dbStatus ? t.dbShort[dbStatus.driver] : '...';

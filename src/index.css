@@ -633,7 +633,7 @@ button {
 /* Mobile Bottom Tab Bar */
 .mobile-bottom-nav {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   position: fixed;
   bottom: 0;
   left: 0;
@@ -890,6 +890,8 @@ button {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   padding: 14px 16px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .card-confirmed {

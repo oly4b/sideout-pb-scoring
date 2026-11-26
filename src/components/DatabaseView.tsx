@@ -249,11 +249,32 @@ DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@db.YOUR_PROJECT.supabase.co:543
       </div>
 
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-          <span className="section-heading" style={{ margin: 0 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 10,
+          }}
+        >
+          <span
+            className="section-heading"
+            style={{
+              margin: 0,
+              minWidth: 0,
+              flex: '1 1 180px',
+              overflowWrap: 'anywhere',
+            }}
+          >
             supabase/migrations/001_initial_schema.sql
           </span>
-          <button type="button" className="btn btn-navy btn-sm" onClick={handleCopySchema}>
+          <button
+            type="button"
+            className="btn btn-navy btn-sm"
+            style={{ flexShrink: 0 }}
+            onClick={handleCopySchema}
+          >
             {copied ? <Check size={14} /> : <Copy size={14} />}
             {copied ? 'Copied' : 'Copy SQL'}
           </button>
