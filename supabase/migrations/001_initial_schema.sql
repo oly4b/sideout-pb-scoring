@@ -139,3 +139,8 @@ create policy "Allow all on match_participants" on public.match_participants for
 
 drop policy if exists "Allow all on rally_events" on public.rally_events;
 create policy "Allow all on rally_events" on public.rally_events for all using (true) with check (true);
+
+-- Grant table/view/sequence permissions to Supabase API roles (needed for publishable/anon keys)
+grant usage on schema public to anon, authenticated, service_role;
+grant all on all tables in schema public to anon, authenticated, service_role;
+grant all on all sequences in schema public to anon, authenticated, service_role;
