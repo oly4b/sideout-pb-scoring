@@ -178,8 +178,8 @@ export function SideoutCourtCanvas({
   const exFull = (endCoords.xPct / 100) * 500;
   const eyFull = (endCoords.yPct / 100) * 540;
 
-  const yTop = 146; // ~25% past top NVZ (186 -> 24)
-  const yBot = 389; // ~25% past bottom NVZ (346 -> 518)
+  const yTop = 158; // ~5% shorter from top endpoint (146 -> 158)
+  const yBot = 377; // ~5% shorter from bottom endpoint (389 -> 377)
   const sy = serverHalf === 'top' ? yTop : yBot;
   const ey = receiverHalf === 'top' ? yTop : yBot;
   const dyFull = eyFull - syFull || 1;
@@ -436,8 +436,8 @@ export function SideoutCourtCanvas({
       {tokens.map((tok) => {
         const coords = getBoxCoords(tok.half, tok.side);
         const isTeamA = tok.team === 'A';
-        const pillBg = isTeamA ? '#bbf7d0' : '#fed7aa';
-        const pillBorder = isTeamA ? '#4ade80' : '#fb923c';
+        const pillBg = isTeamA ? '#bbf7d0' : '#ffc4bd';
+        const pillBorder = isTeamA ? '#4ade80' : '#ff8a80';
 
         return (
           <motion.div

@@ -48,12 +48,28 @@ export function PickleballMascot({
         : { y: [0, -2, 0], rotate: 0 };
 
   const bodyTransition = isCelebrating
-    ? { duration: 0.72, repeat: Infinity, ease: 'easeInOut' as const }
+    ? { duration: 1.15, repeat: Infinity, ease: 'easeInOut' as const }
     : isWalking
       ? { duration: 0.52, repeat: Infinity, ease: 'easeInOut' as const }
       : isScoring
         ? { duration: 0.4, ease: 'easeOut' as const }
-        : { duration: 2.2, repeat: Infinity, ease: 'easeInOut' as const };
+        : { duration: 3.2, repeat: Infinity, ease: 'easeInOut' as const };
+
+  const leafAnimate = isCelebrating
+    ? { rotate: [8, 16, -6, -16, 8] }
+    : isWalking
+      ? { rotate: [4, -6, 4] }
+      : isScoring
+        ? { rotate: [0, 14, -8, 0] }
+        : { rotate: [-3, 4, -3] };
+
+  const leafTransition = isCelebrating
+    ? { duration: 1.15, times: [0, 0.25, 0.5, 0.75, 1], repeat: Infinity, ease: 'easeInOut' as const }
+    : isWalking
+      ? { duration: 0.52, repeat: Infinity, ease: 'easeInOut' as const }
+      : isScoring
+        ? { duration: 0.45, ease: 'easeOut' as const }
+        : { duration: 3.2, delay: 0.2, repeat: Infinity, ease: 'easeInOut' as const };
 
   return (
     <div
@@ -172,7 +188,7 @@ export function PickleballMascot({
           }
           transition={
             isCelebrating
-              ? { duration: 0.72, repeat: Infinity, ease: 'easeInOut' }
+              ? { duration: 1.15, repeat: Infinity, ease: 'easeInOut' }
               : isWalking
                 ? { duration: 0.52, repeat: Infinity, ease: 'easeInOut' }
                 : { duration: 0.2, ease: 'easeOut' }
@@ -195,7 +211,7 @@ export function PickleballMascot({
           }
           transition={
             isCelebrating
-              ? { duration: 0.72, repeat: Infinity, ease: 'easeInOut' }
+              ? { duration: 1.15, repeat: Infinity, ease: 'easeInOut' }
               : isWalking
                 ? { duration: 0.52, repeat: Infinity, ease: 'easeInOut' }
                 : { duration: 0.2, ease: 'easeOut' }
@@ -207,38 +223,24 @@ export function PickleballMascot({
           <path d="M69 117 Q77 121 85 117" stroke="#f8fafc" strokeWidth="2.5" strokeLinecap="round" fill="none" />
         </motion.g>
 
-        {/* Fluttering headband tails (behind head on left) */}
-        <motion.g
-          animate={{ rotate: [-5, 7, -5] }}
-          transition={{ duration: isCelebrating ? 0.45 : 1.4, repeat: Infinity, ease: 'easeInOut' }}
-          style={{ transformOrigin: '24px 43px', transformBox: 'view-box' }}
-        >
-          <path
-            d="M25 41 C12 37, 5 44, 1 50 C9 49, 18 46, 25 45 Z"
-            fill="#112440"
+        {/* Peach stem & leaf at top cleft (leaf anchored at stem 59,19) */}
+        <g transform="translate(59, 19) rotate(-12)">
+          <motion.path
+            d="M0 0 C8 -9, 21 -8, 25 0 C21 8, 8 9, 0 0 Z"
+            fill="url(#peach-leaf-grad)"
+            stroke="#15803d"
+            strokeWidth="1.4"
+            animate={leafAnimate}
+            transition={leafTransition}
+            style={{ originX: 0, originY: 0.5 }}
           />
-          <path
-            d="M25 45 C14 47, 7 54, 5 60 C13 57, 20 52, 26 48 Z"
-            fill="#264673"
-          />
-        </motion.g>
-
-        {/* Peach stem & leaf at top cleft */}
+        </g>
         <path
           d="M58 26 Q58 14 63 9"
           stroke="#78350f"
           strokeWidth="3.5"
           strokeLinecap="round"
           fill="none"
-        />
-        <motion.path
-          d="M59 20 C67 8, 82 10, 84 20 C76 26, 65 25, 59 20 Z"
-          fill="url(#peach-leaf-grad)"
-          stroke="#15803d"
-          strokeWidth="1.4"
-          animate={{ rotate: [-3, 4, -3] }}
-          transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-          style={{ transformOrigin: '59px 20px', transformBox: 'view-box' }}
         />
 
         {/* Left arm (behind body so shoulder anchors cleanly at 20,68) */}
@@ -252,7 +254,7 @@ export function PickleballMascot({
                   : { rotate: [-32, -25, -32] }
             }
             transition={{
-              duration: isCelebrating ? 0.72 : isScoring ? 0.35 : 2.1,
+              duration: isCelebrating ? 1.15 : isScoring ? 0.35 : 3.2,
               repeat: isScoring ? 0 : Infinity,
               ease: 'easeInOut',
             }}
@@ -371,7 +373,7 @@ export function PickleballMascot({
                   : { rotate: [-42, -34, -42] }
             }
             transition={{
-              duration: isCelebrating ? 0.72 : isScoring ? 0.35 : 2.1,
+              duration: isCelebrating ? 1.15 : isScoring ? 0.35 : 3.2,
               repeat: isScoring ? 0 : Infinity,
               ease: 'easeInOut',
             }}

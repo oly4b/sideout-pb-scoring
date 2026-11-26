@@ -117,7 +117,7 @@ export function GoodGameOverlay({
               cx="110"
               cy="28"
               r="14.5"
-              fill={effectiveWinner === 'A' ? '#86efac' : '#fdba74'}
+              fill={effectiveWinner === 'A' ? '#86efac' : '#ff8a80'}
               stroke="#fffbeb"
               strokeWidth="2"
             />
@@ -189,7 +189,7 @@ export function GoodGameOverlay({
           style={{ opacity: effectiveWinner === 'B' ? 1 : 0.62 }}
         >
           <div className="good-game-team">
-            <span className="good-game-dot" style={{ background: '#fdba74' }} />
+            <span className="good-game-dot" style={{ background: '#ff8a80' }} />
             <span>{teamBName}</span>
             {effectiveWinner === 'B' && (
               <span

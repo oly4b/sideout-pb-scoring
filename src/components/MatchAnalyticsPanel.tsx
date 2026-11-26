@@ -19,6 +19,8 @@ function ComparisonRow({
   rightValue,
   leftPct,
   rightPct,
+  leftMetric,
+  rightMetric,
 }: {
   label: string;
   subLabel?: string;
@@ -26,10 +28,23 @@ function ComparisonRow({
   rightValue: string;
   leftPct?: number;
   rightPct?: number;
+  leftMetric?: number | null;
+  rightMetric?: number | null;
 }) {
   const showBar = leftPct !== undefined && rightPct !== undefined && leftPct + rightPct > 0;
   const total = showBar ? leftPct + rightPct : 1;
   const leftWidth = showBar ? Math.round((leftPct / total) * 100) : 50;
+
+  const cmpLeft = leftMetric !== undefined ? leftMetric : leftPct;
+  const cmpRight = rightMetric !== undefined ? rightMetric : rightPct;
+  const hasWinner =
+    cmpLeft !== null &&
+    cmpLeft !== undefined &&
+    cmpRight !== null &&
+    cmpRight !== undefined &&
+    cmpLeft !== cmpRight;
+  const leftOpacity = hasWinner && cmpLeft < cmpRight ? 0.5 : 1;
+  const rightOpacity = hasWinner && cmpRight < cmpLeft ? 0.5 : 1;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -42,7 +57,14 @@ function ComparisonRow({
           fontSize: '0.8rem',
         }}
       >
-        <span style={{ fontWeight: 700, color: 'var(--team-a)', textAlign: 'left' }}>
+        <span
+          style={{
+            fontWeight: 700,
+            color: 'var(--team-a)',
+            textAlign: 'left',
+            opacity: leftOpacity,
+          }}
+        >
           {leftValue}
         </span>
         <span style={{ color: 'var(--ink-secondary)', fontWeight: 600, textAlign: 'center' }}>
@@ -53,7 +75,14 @@ function ComparisonRow({
             </span>
           )}
         </span>
-        <span style={{ fontWeight: 700, color: 'var(--team-b)', textAlign: 'right' }}>
+        <span
+          style={{
+            fontWeight: 700,
+            color: 'var(--team-b)',
+            textAlign: 'right',
+            opacity: rightOpacity,
+          }}
+        >
           {rightValue}
         </span>
       </div>
@@ -71,6 +100,7 @@ function ComparisonRow({
             style={{
               width: `${leftWidth}%`,
               background: 'var(--team-a)',
+              opacity: leftOpacity,
               height: '100%',
               transition: 'width 0.25s ease',
             }}
@@ -79,6 +109,7 @@ function ComparisonRow({
             style={{
               flex: 1,
               background: 'var(--team-b)',
+              opacity: rightOpacity,
               height: '100%',
             }}
           />
@@ -177,6 +208,8 @@ export function MatchAnalyticsPanel({ match, lang, compact = false }: MatchAnaly
           }
           leftPct={a.teamA.serveWinPct ?? 0}
           rightPct={a.teamB.serveWinPct ?? 0}
+          leftMetric={a.teamA.serveWinPct}
+          rightMetric={a.teamB.serveWinPct}
         />
 
         <ComparisonRow
@@ -205,12 +238,16 @@ export function MatchAnalyticsPanel({ match, lang, compact = false }: MatchAnaly
           }
           leftPct={a.teamA.receiveWinPct ?? 0}
           rightPct={a.teamB.receiveWinPct ?? 0}
+          leftMetric={a.teamA.receiveWinPct}
+          rightMetric={a.teamB.receiveWinPct}
         />
 
         <ComparisonRow
           label={isJa ? '平均得点 / サーブ権' : 'Pts / Possession'}
           leftValue={a.teamA.ptsPerPossession !== null ? `${a.teamA.ptsPerPossession}` : '—'}
           rightValue={a.teamB.ptsPerPossession !== null ? `${a.teamB.ptsPerPossession}` : '—'}
+          leftMetric={a.teamA.ptsPerPossession}
+          rightMetric={a.teamB.ptsPerPossession}
         />
 
         {showServerSplit && (
@@ -218,6 +255,18 @@ export function MatchAnalyticsPanel({ match, lang, compact = false }: MatchAnaly
             label={isJa ? 'サーバー別勝率 (1番/2番)' : 'Server 1 / 2'}
             leftValue={`${a.teamA.server1Wins}/${a.teamA.server1Serves} · ${a.teamA.server2Wins}/${a.teamA.server2Serves}`}
             rightValue={`${a.teamB.server1Wins}/${a.teamB.server1Serves} · ${a.teamB.server2Wins}/${a.teamB.server2Serves}`}
+            leftMetric={
+              a.teamA.server1Serves + a.teamA.server2Serves > 0
+                ? (a.teamA.server1Wins + a.teamA.server2Wins) /
+                  (a.teamA.server1Serves + a.teamA.server2Serves)
+                : null
+            }
+            rightMetric={
+              a.teamB.server1Serves + a.teamB.server2Serves > 0
+                ? (a.teamB.server1Wins + a.teamB.server2Wins) /
+                  (a.teamB.server1Serves + a.teamB.server2Serves)
+                : null
+            }
           />
         )}
 
@@ -225,12 +274,16 @@ export function MatchAnalyticsPanel({ match, lang, compact = false }: MatchAnaly
           label={isJa ? '最長連続得点' : 'Longest Run'}
           leftValue={`${a.teamA.longestPointRun}-0`}
           rightValue={`${a.teamB.longestPointRun}-0`}
+          leftMetric={a.teamA.longestPointRun}
+          rightMetric={a.teamB.longestPointRun}
         />
 
         <ComparisonRow
           label={isJa ? '最大リード' : 'Max Lead'}
           leftValue={a.teamA.maxLead > 0 ? `+${a.teamA.maxLead}` : '0'}
           rightValue={a.teamB.maxLead > 0 ? `+${a.teamB.maxLead}` : '0'}
+          leftMetric={a.teamA.maxLead}
+          rightMetric={a.teamB.maxLead}
         />
 
         {(a.teamA.gamePointsFaced > 0 || a.teamB.gamePointsFaced > 0) && (
@@ -245,6 +298,16 @@ export function MatchAnalyticsPanel({ match, lang, compact = false }: MatchAnaly
               a.teamB.gamePointsFaced > 0
                 ? `${a.teamB.gamePointsSaved}/${a.teamB.gamePointsFaced}`
                 : '—'
+            }
+            leftMetric={
+              a.teamA.gamePointsFaced > 0
+                ? a.teamA.gamePointsSaved / a.teamA.gamePointsFaced
+                : null
+            }
+            rightMetric={
+              a.teamB.gamePointsFaced > 0
+                ? a.teamB.gamePointsSaved / a.teamB.gamePointsFaced
+                : null
             }
           />
         )}

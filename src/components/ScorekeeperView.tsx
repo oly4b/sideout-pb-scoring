@@ -1360,10 +1360,20 @@ export function ScorekeeperView({
             color: 'var(--ink-secondary)',
           }}
         >
-          <span>
+          <span
+            style={{
+              color: 'var(--team-a)',
+              opacity: momentum.teamAPercent < momentum.teamBPercent ? 0.5 : 1,
+            }}
+          >
             {activeMatch.team_a_name} ({momentum.teamAPercent}%)
           </span>
-          <span>
+          <span
+            style={{
+              color: 'var(--team-b)',
+              opacity: momentum.teamBPercent < momentum.teamAPercent ? 0.5 : 1,
+            }}
+          >
             {activeMatch.team_b_name} ({momentum.teamBPercent}%)
           </span>
         </div>

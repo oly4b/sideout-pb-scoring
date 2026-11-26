@@ -50,8 +50,8 @@
   --indigo-border: #1b365d;
 
   /* Team palette harmonized with 桃dinks brand */
-  --team-a: #1d4ed8;
-  --team-a-soft: rgba(29, 78, 216, 0.1);
+  --team-a: #16a34a;
+  --team-a-soft: rgba(22, 163, 74, 0.12);
   --team-b: #e25747;
   --team-b-soft: rgba(226, 87, 71, 0.12);
 
@@ -124,8 +124,8 @@
   --indigo-soft: rgba(163, 230, 53, 0.2);
   --indigo-border: #a3e635;
 
-  --team-a: #60a5fa;
-  --team-a-soft: rgba(96, 165, 250, 0.18);
+  --team-a: #86efac;
+  --team-a-soft: rgba(134, 239, 172, 0.18);
   --team-b: #ff8a80;
   --team-b-soft: rgba(255, 138, 128, 0.18);
 
@@ -1520,6 +1520,10 @@ button {
   background: var(--team-b);
 }
 
+[data-theme='dark'] .rally-dot {
+  color: #0f172a;
+}
+
 .controls-strip {
   display: flex;
   flex-wrap: wrap;
@@ -1978,7 +1982,7 @@ button {
 }
 
 .sideout-score-card.is-team-b {
-  background: linear-gradient(180deg, #ffedd5 0%, #fed7aa 100%);
+  background: linear-gradient(180deg, #ffe4e1 0%, #ffc4bd 100%);
 }
 
 .sideout-card-name {
