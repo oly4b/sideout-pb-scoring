@@ -9,11 +9,17 @@ let singleton: DataRepository | null = null;
 export function getRepository(): DataRepository {
   if (singleton) return singleton;
 
-  const supabaseUrl = process.env.SUPABASE_URL?.trim();
+  const supabaseUrl =
+    process.env.SUPABASE_URL?.trim() ||
+    process.env.VITE_SUPABASE_URL?.trim() ||
+    process.env.SCHEDULER_SUPABASE_URL?.trim();
   const supabaseKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
     process.env.SUPABASE_ANON_KEY?.trim() ||
-    process.env.SUPABASE_PUBLISHABLE_KEY?.trim();
+    process.env.SUPABASE_PUBLISHABLE_KEY?.trim() ||
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ||
+    process.env.VITE_SUPABASE_ANON_KEY?.trim() ||
+    process.env.SCHEDULER_SUPABASE_KEY?.trim();
   const databaseUrl = process.env.DATABASE_URL?.trim();
 
   if (supabaseUrl && supabaseKey) {

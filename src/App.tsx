@@ -219,7 +219,7 @@ export default function App() {
               <div className="momo-badge-row">
                 <div className="momo-app-toggle" role="group" aria-label="Switch web app">
                   <span className="momo-app-toggle-item is-active">
-                    🏓 {t.badgeTop}
+                    {t.badgeTop}
                   </span>
                   <button
                     type="button"

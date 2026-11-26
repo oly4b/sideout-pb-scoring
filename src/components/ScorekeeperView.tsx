@@ -341,28 +341,10 @@ export function ScorekeeperView({
     return p?.nickname?.trim() || p?.name.split(' ')[0] || fallback;
   };
 
-  // Match Setup View with 桃dinks Hero Banner
+  // Match Setup View (compact session-scheduler aligned layout)
   if (!activeMatch || !liveState) {
     return (
       <div className="scorekeeper-shell">
-        {/* 桃dinks Brand Crest Banner */}
-        <section className="momo-crest-card">
-          <div className="momo-crest-media">
-            <img src="/og-image.jpg" alt="桃dinks Pickleball Crest" />
-          </div>
-          <div className="momo-crest-body">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span className="momo-lime-pill">0-0-2 SIDE-OUT &amp; RALLY</span>
-              <span className="momo-glass-pill">Supabase / PostgreSQL Ready</span>
-            </div>
-            <h1 style={{ margin: 0, fontSize: 'clamp(1.25rem, 2.3vw, 1.6rem)', fontWeight: 800 }}>
-              {t.title}
-            </h1>
-            <p style={{ margin: 0, fontSize: '0.86rem', color: 'rgba(255,255,255,0.78)', lineHeight: 1.5 }}>
-              {t.subtitle}
-            </p>
-          </div>
-        </section>
 
         {inProgressMatches.length > 0 && (
           <section className="section-card is-confirmed">
@@ -629,7 +611,7 @@ export function ScorekeeperView({
             <button
               type="button"
               id="btn-start-quick-match"
-              className="btn btn-primary"
+              className="btn btn-lime"
               onClick={handleStartQuickMatch}
               disabled={creating || players.length < (gameType === 'doubles' ? 4 : 2)}
             >

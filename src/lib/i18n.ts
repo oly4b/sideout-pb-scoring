@@ -2,7 +2,7 @@ export type Lang = 'ja' | 'en';
 
 export const copy = {
   ja: {
-    badgeTop: 'スコア管理 & セッション運営',
+    badgeTop: 'Scoring OS',
     schedulerBadge: '空き状況 & 投票',
     appTitle: 'サイドアウト・スコアキーパー',
     subtitlePrefix: '岡山・倉敷ピックルボール',
@@ -117,7 +117,7 @@ export const copy = {
     },
   },
   en: {
-    badgeTop: 'Scorekeeper & Session OS',
+    badgeTop: 'Scoring OS',
     schedulerBadge: 'Availability & Poll',
     appTitle: 'Sideout Scorekeeper & Sessions',
     subtitlePrefix: 'Okayama & Kurashiki Pickleball',

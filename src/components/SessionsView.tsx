@@ -450,16 +450,16 @@ export function SessionsView({
               {schedulerSessions.map((b) => {
                 const yesList = b.attendees.filter((a) => a.status === 'yes');
                 return (
-                  <div key={b.date_key} className="court-matchup-row" style={{ alignItems: 'flex-start' }}>
+                  <div key={b.date_key} className="scheduler-booked-card">
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 800, fontSize: '0.92rem' }}>
-                          {b.date_key}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span className="scheduler-booked-date">
+                          <Calendar size={13} /> {b.date_key}
                         </span>
-                        <span className="tag" style={{ fontSize: '0.72rem' }}>
-                          <Clock size={11} /> {b.start_hour}:00–{b.end_hour}:00
+                        <span className="scheduler-booked-time">
+                          <Clock size={12} /> {b.start_hour}:00–{b.end_hour}:00
                         </span>
-                        <span className="tag" style={{ fontSize: '0.72rem' }}>
+                        <span className="scheduler-booked-type">
                           {b.court_type === 'indoor'
                             ? lang === 'ja'
                               ? '屋内'
@@ -469,18 +469,7 @@ export function SessionsView({
                               : 'Outdoor'}
                         </span>
                       </div>
-                      <div
-                        style={{
-                          fontSize: '0.82rem',
-                          fontWeight: 700,
-                          color: 'var(--ink-primary)',
-                          marginTop: 4,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 5,
-                          flexWrap: 'wrap',
-                        }}
-                      >
+                      <div className="scheduler-booked-venue">
                         <MapPin size={13} style={{ color: 'var(--brand-emerald)' }} />
                         <span>{b.venue_full_name}</span>
                         {b.map_url && (
@@ -494,16 +483,15 @@ export function SessionsView({
                             <ExternalLink size={12} />
                           </a>
                         )}
+                        <span className="scheduler-going-pill">
+                          {lang === 'ja' ? `参加 ${yesList.length}` : `Going: ${yesList.length}`}
+                        </span>
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--ink-secondary)', marginTop: 4 }}>
-                        {yesList.length > 0
-                          ? `${yesList.length} ${lang === 'ja' ? '名参加' : 'confirmed'}: ${yesList
-                              .map((a) => a.attendee_name)
-                              .join(', ')}`
-                          : lang === 'ja'
-                            ? '参加者未登録'
-                            : 'No confirmed attendees yet'}
-                      </div>
+                      {yesList.length > 0 && (
+                        <div style={{ fontSize: '0.74rem', color: 'var(--ink-secondary)', marginTop: 4 }}>
+                          {yesList.map((a) => a.attendee_name).join(', ')}
+                        </div>
+                      )}
                     </div>
                     <button
                       type="button"
