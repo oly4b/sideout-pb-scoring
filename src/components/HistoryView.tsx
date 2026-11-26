@@ -45,7 +45,7 @@ function formatMinutes(sec: number): string {
   return `${m}m ${s}s`;
 }
 
-function ScoreProgressionChart({ match, lang }: { match: Match; lang: Lang }) {
+export function ScoreProgressionChart({ match, lang }: { match: Match; lang: Lang }) {
   const rallies = match.rallies ?? [];
   if (rallies.length === 0) {
     return (

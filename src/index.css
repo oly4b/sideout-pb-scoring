@@ -2401,17 +2401,18 @@ button {
 }
 
 .fs-board-tile {
+  position: relative;
   min-height: 0;
   overflow: hidden;
   background: rgba(15, 23, 42, 0.72);
   border: 2px solid rgba(255, 255, 255, 0.12);
   border-radius: 24px;
-  padding: clamp(16px, 2.4vw, 32px);
+  padding: clamp(18px, 2.6vh, 32px) clamp(16px, 2.4vw, 32px);
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: clamp(10px, 1.8vw, 20px);
+  justify-content: space-between;
+  gap: clamp(8px, 1.4vh, 16px);
   cursor: pointer;
   transition: transform 0.12s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   -webkit-tap-highlight-color: transparent;
@@ -2439,7 +2440,7 @@ button {
 
 .fs-board-team-name {
   font-family: var(--font-display);
-  font-size: clamp(2.55rem, 5.7vw, 4.95rem);
+  font-size: clamp(2.2rem, min(4.8vw, 6.8dvh), 4.6rem);
   font-weight: 900;
   line-height: 1.1;
   text-align: center;
@@ -2451,12 +2452,36 @@ button {
 
 .fs-board-score {
   font-family: var(--font-display);
-  font-size: clamp(8rem, min(32vw, 36dvh), 28rem);
+  font-size: clamp(14rem, min(48vw, 66dvh), 64rem);
   font-weight: 900;
-  line-height: 0.85;
+  line-height: 0.78;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.03em;
   text-shadow: 0 10px 32px rgba(2, 6, 23, 0.55);
+}
+
+.fs-board-gp-badge {
+  position: absolute;
+  top: 16px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(190, 242, 100, 0.2);
+  border: 1.5px solid #bef264;
+  color: #bef264;
+  font-size: clamp(0.85rem, 1.4vw, 1.15rem);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: 0 4px 16px rgba(2, 6, 23, 0.45);
+  pointer-events: none;
+}
+
+.fs-board-gp-badge.is-left {
+  left: 16px;
+}
+
+.fs-board-gp-badge.is-right {
+  right: 16px;
 }
 
 .fs-board-status-pill {
@@ -2519,13 +2544,48 @@ button {
   }
 }
 
-@media (max-width: 680px) {
-  .fs-board-grid {
-    grid-template-columns: 1fr;
+@media (orientation: portrait) {
+  .fs-board-shell {
+    width: 100dvh;
+    height: 100vw;
+    top: 50%;
+    left: 50%;
+    right: auto;
+    bottom: auto;
+    transform: translate(-50%, -50%) rotate(90deg);
+    transform-origin: center center;
+    padding: 12px 16px;
+    gap: 10px;
+  }
+
+  .fs-board-topbar {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .fs-board-callout-digits {
+    font-size: clamp(1.6rem, 4.5vh, 2.6rem);
+  }
+
+  .fs-board-team-name {
+    font-size: clamp(2.2rem, min(7.5vw, 5.2vh), 3.4rem);
+  }
+
+  .fs-board-status-pill {
+    font-size: clamp(0.72rem, min(3.2vw, 2vh), 1rem);
+    padding: 5px 12px;
   }
 
   .fs-board-score {
-    font-size: clamp(12.375rem, 30vh, 20.25rem);
+    font-size: clamp(6rem, 24vh, 14rem);
+  }
+
+  .fs-board-tag-btn {
+    font-size: clamp(1.2rem, 3.6vh, 2rem);
+    min-height: 40px;
+    padding: 8px 14px;
   }
 }
 
@@ -2577,4 +2637,201 @@ button {
 
 .view-mode-option.is-active {
   color: #ffffff;
+}
+
+/* Edit <-> Spectator Icon Thumb Slider */
+.edit-mode-slider {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.edit-mode-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  border-radius: 999px;
+  background: #a3e635;
+  box-shadow: 0 2px 8px rgba(2, 6, 23, 0.35);
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), background 0.2s ease;
+}
+
+.edit-mode-slider.is-spectator .edit-mode-thumb {
+  transform: translateX(100%);
+  background: #475569;
+}
+
+.edit-mode-option {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 9px;
+  color: var(--ink-secondary);
+  transition: color 0.2s ease;
+}
+
+.edit-mode-slider.is-edit .edit-mode-option.is-active {
+  color: #0f172a;
+}
+
+.edit-mode-slider.is-spectator .edit-mode-option.is-active {
+  color: #ffffff;
+}
+
+/* Fullscreen Board Inline Tagging */
+.fs-board-tag-stack {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 1.6vh, 18px);
+}
+
+.fs-board-tag-btn {
+  width: min(82%, 460px);
+  flex: 0 1 25%;
+  min-height: 54px;
+  padding: clamp(10px, 1.4vh, 18px) 24px;
+  border-radius: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  background: rgba(30, 41, 59, 0.85);
+  color: #f8fafc;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, min(4.6vw, 7.5dvh), 4.2rem);
+  line-height: 1;
+  font-weight: 900;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.fs-board-tag-btn.is-winner-tag {
+  border-color: rgba(190, 242, 100, 0.55);
+  background: rgba(163, 230, 53, 0.16);
+  color: #bef264;
+}
+
+.fs-board-tag-btn.is-error-tag {
+  border-color: rgba(255, 138, 128, 0.45);
+  background: rgba(255, 138, 128, 0.14);
+  color: #fecaca;
+}
+
+.fs-board-tag-btn:active {
+  transform: scale(0.97);
+}
+
+.fs-board-tag-skip {
+  align-self: center;
+  margin-top: 2px;
+  padding: 6px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Fullscreen Board Postgame Summary */
+.fs-board-postgame {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 16px;
+}
+
+.fs-board-postgame-left {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 4px;
+}
+
+.fs-board-postgame-chart-card {
+  padding: 10px 14px;
+  flex-shrink: 0;
+}
+
+.fs-board-postgame-chart-card .chart-container svg {
+  max-height: 20dvh;
+  width: 100%;
+}
+
+.fs-board-postgame-stats-card {
+  padding: 10px 14px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.fs-board-postgame-hero {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 2px solid var(--team-a);
+  border-radius: 14px;
+  padding: 10px 14px;
+}
+
+.fs-board-postgame-right {
+  min-height: 0;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fs-board-rally-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 4px;
+}
+
+.fs-board-postgame-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 900px) {
+  .fs-board-postgame {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
 }
