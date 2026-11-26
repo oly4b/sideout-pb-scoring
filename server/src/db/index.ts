@@ -23,7 +23,13 @@ export function getRepository(): DataRepository {
   const databaseUrl = process.env.DATABASE_URL?.trim();
 
   if (supabaseUrl && supabaseKey) {
-    console.log(`[DB] Using SupabaseAdapter (${new URL(supabaseUrl).host})`);
+    let host = supabaseUrl;
+    try {
+      host = new URL(supabaseUrl).host;
+    } catch {
+      // keep raw string if URL parsing fails
+    }
+    console.log(`[DB] Using SupabaseAdapter (${host})`);
     singleton = new SupabaseAdapter(supabaseUrl, supabaseKey);
     return singleton;
   }

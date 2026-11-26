@@ -2,7 +2,7 @@ export type Lang = 'ja' | 'en';
 
 export const copy = {
   ja: {
-    badgeTop: 'Scoring OS',
+    badgeTop: 'スコア OS',
     schedulerBadge: '空き状況 & 投票',
     appTitle: 'サイドアウト・スコアキーパー',
     subtitlePrefix: '岡山・倉敷ピックルボール',
