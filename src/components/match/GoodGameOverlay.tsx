@@ -1,8 +1,10 @@
 import { ArrowRight, Home, Undo2 } from 'lucide-react';
 import { motion } from 'motion/react';
+import type { Lang } from '../../lib/i18n';
 import { PickleballMascot } from './PickleballMascot';
 
 interface GoodGameOverlayProps {
+  lang: Lang;
   teamAName: string;
   teamBName: string;
   teamAScore: number;
@@ -15,6 +17,7 @@ interface GoodGameOverlayProps {
 }
 
 export function GoodGameOverlay({
+  lang,
   teamAName,
   teamBName,
   teamAScore,
@@ -39,7 +42,7 @@ export function GoodGameOverlay({
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.14, type: 'spring', stiffness: 300, damping: 24 }}
       >
-        Good game!
+        {lang === 'ja' ? 'ナイスゲーム！' : 'Good game!'}
       </motion.h2>
 
       {/* Circular spotlight with skyline + court + celebrating mascot */}
@@ -119,10 +122,10 @@ export function GoodGameOverlay({
           onClick={onUndo}
           disabled={!canUndo}
         >
-          <Undo2 size={15} /> Undo
+          <Undo2 size={15} /> {lang === 'ja' ? '戻す' : 'Undo'}
         </button>
         <button type="button" className="sideout-play-again-btn" onClick={onPlayAgain}>
-          Play again <ArrowRight size={16} />
+          {lang === 'ja' ? 'もう一度プレイ' : 'Play again'} <ArrowRight size={16} />
         </button>
       </div>
     </motion.div>

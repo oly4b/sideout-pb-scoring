@@ -383,6 +383,7 @@ export default function App() {
               <ScorekeeperView
                 lang={lang}
                 players={players}
+                matches={matches}
                 activeMatch={activeMatch}
                 inProgressMatches={inProgressMatches}
                 onSelectMatch={(m) => setActiveMatchId(m?.id ?? null)}

@@ -2,7 +2,7 @@ import { Plus, RefreshCw, Swords, Trash2, Trophy, UserCheck, X } from 'lucide-re
 import { useMemo, useState } from 'react';
 import { formatRating } from '../../shared/ratingEngine';
 import { computePlayerDetailStats, computeStandings } from '../../shared/statsEngine';
-import type { Match, Player } from '../../shared/types';
+import type { Match, Player, PlayerDetailStats } from '../../shared/types';
 import { api } from '../lib/api';
 import { copy, type Lang } from '../lib/i18n';
 
@@ -26,6 +26,9 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
   const [color, setColor] = useState(SWATCHES[0]);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<PlayerDetailStats | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   const handleSyncFromScheduler = async () => {
     try {
@@ -82,8 +85,20 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
   );
 
   const handleAddPlayer = async () => {
-    if (!name.trim()) {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
       onNotify('Enter a player name');
+      return;
+    }
+    const duplicate = players.some(
+      (p) => p.name.trim().toLowerCase() === trimmedName.toLowerCase()
+    );
+    if (duplicate) {
+      onNotify(
+        lang === 'ja'
+          ? `${trimmedName} はすでに登録されています`
+          : `${trimmedName} is already in the roster`
+      );
       return;
     }
     try {
@@ -110,14 +125,21 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
     }
   };
 
-  const handleDeletePlayer = async (id: string) => {
+  const handleConfirmDeletePlayer = async () => {
+    if (!deleteTarget) return;
+    if (deleteConfirmText.trim().toUpperCase() !== 'DELETE') return;
     try {
-      await api.deletePlayer(id);
+      setDeleting(true);
+      await api.deletePlayer(deleteTarget.player_id);
+      setDeleteTarget(null);
+      setDeleteConfirmText('');
       setSelectedId(null);
       await onRefreshAll();
-      onNotify('Player removed');
+      onNotify(lang === 'ja' ? 'プレイヤーを削除しました' : 'Player removed');
     } catch (err) {
       onNotify(err instanceof Error ? err.message : 'Failed to remove player');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -289,10 +311,14 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 type="button"
+                id="btn-remove-player"
                 className="btn btn-danger btn-sm"
-                onClick={() => handleDeletePlayer(detail.player_id)}
+                onClick={() => {
+                  setDeleteConfirmText('');
+                  setDeleteTarget(detail);
+                }}
               >
-                <Trash2 size={14} /> Remove
+                <Trash2 size={14} /> {lang === 'ja' ? '削除' : 'Remove'}
               </button>
               <button
                 type="button"
@@ -455,6 +481,99 @@ export function PlayersView({ lang, players, matches, onRefreshAll, onNotify }: 
                 Save Player
               </button>
             </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {deleteTarget && (
+        <div
+          className="modal-backdrop"
+          onClick={() => {
+            if (!deleting) setDeleteTarget(null);
+          }}
+        >
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--danger)' }}>
+                <Trash2 size={18} />
+                <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>
+                  {lang === 'ja' ? 'プレイヤー削除の確認' : 'Confirm Player Removal'}
+                </h2>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <p style={{ margin: 0, fontSize: '0.88rem', lineHeight: 1.5 }}>
+                {lang === 'ja' ? (
+                  <>
+                    <strong>{deleteTarget.name}</strong> をロスターから削除します。この操作は取り消せません。
+                  </>
+                ) : (
+                  <>
+                    You are about to permanently remove <strong>{deleteTarget.name}</strong> from
+                    the roster. This cannot be undone.
+                  </>
+                )}
+              </p>
+              <div
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--danger-soft)',
+                  border: '1px solid rgba(225, 29, 72, 0.25)',
+                  fontSize: '0.8rem',
+                  color: 'var(--danger)',
+                  fontWeight: 700,
+                }}
+              >
+                {lang === 'ja'
+                  ? `戦績: ${deleteTarget.games_played}試合（${deleteTarget.wins}勝 ${deleteTarget.losses}敗）。過去の試合参加記録も削除されます。`
+                  : `Record: ${deleteTarget.games_played} match(es) (${deleteTarget.wins}W – ${deleteTarget.losses}L). Match participation links will also be removed.`}
+              </div>
+              <div className="field-group">
+                <label className="field-label" htmlFor="delete-player-confirm">
+                  {lang === 'ja'
+                    ? '続行するには DELETE と入力してください'
+                    : 'Type DELETE to confirm'}
+                </label>
+                <input
+                  id="delete-player-confirm"
+                  type="text"
+                  className="input"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="DELETE"
+                  autoComplete="off"
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={deleting}
+                >
+                  {lang === 'ja' ? 'キャンセル' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  id="btn-confirm-delete-player"
+                  className="btn btn-danger"
+                  onClick={() => void handleConfirmDeletePlayer()}
+                  disabled={deleting || deleteConfirmText.trim().toUpperCase() !== 'DELETE'}
+                >
+                  <Trash2 size={15} />{' '}
+                  {lang === 'ja' ? '完全に削除する' : 'Remove Player'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -1,11 +1,13 @@
 import { AnimatePresence, motion } from 'motion/react';
 import type { CourtSide, LiveGameState, TeamId } from '../../../shared/types';
+import type { Lang } from '../../lib/i18n';
 import { FlameBadge } from './FlameBadge';
 import { PickleballMascot, type MascotMood } from './PickleballMascot';
 
 export type CourtTransitionCue = 'switch_ends' | 'side_out' | 'server_change' | null;
 
 interface SideoutCourtCanvasProps {
+  lang: Lang;
   liveState: LiveGameState;
   serverSide: CourtSide;
   endsSwitched: boolean;
@@ -66,6 +68,7 @@ interface TokenRenderItem {
 }
 
 export function SideoutCourtCanvas({
+  lang,
   liveState,
   serverSide,
   endsSwitched,
@@ -366,10 +369,16 @@ export function SideoutCourtCanvas({
             }}
           >
             {transitionCue === 'switch_ends'
-              ? '⇄ Switch Ends'
+              ? lang === 'ja'
+                ? '⇄ エンド交代'
+                : '⇄ Switch Ends'
               : transitionCue === 'side_out'
-                ? 'Side Out!'
-                : '2nd Server'}
+                ? lang === 'ja'
+                  ? 'サイドアウト！'
+                  : 'Side Out!'
+                : lang === 'ja'
+                  ? '2ndサーバー'
+                  : '2nd Server'}
           </motion.div>
         )}
       </AnimatePresence>

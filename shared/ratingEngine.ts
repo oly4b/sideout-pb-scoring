@@ -21,6 +21,7 @@ const BASELINE_RATING = 3.0;
 const SCALE_FACTOR = 0.85;
 const MIN_RATING = 2.0;
 const MAX_RATING = 8.0;
+export const MIN_MATCHES_FOR_RATING = 5;
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -44,6 +45,7 @@ export function computeDuprRatings(
   players: Player[],
   matches: Match[]
 ): DuprRatingResult {
+  const internalRatings = new Map<string, number>();
   const ratings = new Map<string, PlayerRatingState>();
   for (const p of players) {
     ratings.set(p.id, {
@@ -68,16 +70,17 @@ export function computeDuprRatings(
     const teamBIds = m.participants.filter((p) => p.team === 'B').map((p) => p.player_id);
     if (teamAIds.length === 0 || teamBIds.length === 0) continue;
 
-    // For unrated players in their first match, seed internal calculation at the court's rated avg or 3.50
+    // For players without a rating yet, use their internal placement rating or court average / 3.50
     const allRatedOnCourt = [...teamAIds, ...teamBIds]
-      .map((id) => ratings.get(id)?.rating)
+      .map((id) => ratings.get(id)?.rating ?? internalRatings.get(id))
       .filter((r): r is number => typeof r === 'number');
     const courtFallback =
       allRatedOnCourt.length > 0
         ? allRatedOnCourt.reduce((acc, r) => acc + r, 0) / allRatedOnCourt.length
         : BASELINE_RATING;
 
-    const getEffective = (id: string) => ratings.get(id)?.rating ?? courtFallback;
+    const getEffective = (id: string) =>
+      ratings.get(id)?.rating ?? internalRatings.get(id) ?? courtFallback;
 
     const teamARating =
       teamAIds.reduce((sum, id) => sum + getEffective(id), 0) / teamAIds.length;
@@ -102,14 +105,16 @@ export function computeDuprRatings(
     for (const id of teamAIds) {
       const state = ratings.get(id) ?? { rating: null, lastDelta: null, gamesPlayed: 0 };
       const k = getKFactor(state.gamesPlayed);
-      const prev = state.rating ?? courtFallback;
+      const prev = internalRatings.get(id) ?? courtFallback;
       const delta = round2(k * (actualA - expectedA));
-      const nextRating = clampRating(prev + delta);
-      const actualDelta = round2(nextRating - prev);
+      const nextInternal = clampRating(prev + delta);
+      const actualDelta = round2(nextInternal - prev);
+      const nextGames = state.gamesPlayed + 1;
+      internalRatings.set(id, nextInternal);
       ratings.set(id, {
-        rating: nextRating,
-        lastDelta: actualDelta,
-        gamesPlayed: state.gamesPlayed + 1,
+        rating: nextGames >= MIN_MATCHES_FOR_RATING ? nextInternal : null,
+        lastDelta: nextGames >= MIN_MATCHES_FOR_RATING ? actualDelta : null,
+        gamesPlayed: nextGames,
       });
       playerDeltas[id] = actualDelta;
       sumDeltaA += actualDelta;
@@ -118,14 +123,16 @@ export function computeDuprRatings(
     for (const id of teamBIds) {
       const state = ratings.get(id) ?? { rating: null, lastDelta: null, gamesPlayed: 0 };
       const k = getKFactor(state.gamesPlayed);
-      const prev = state.rating ?? courtFallback;
+      const prev = internalRatings.get(id) ?? courtFallback;
       const delta = round2(k * (actualB - expectedB));
-      const nextRating = clampRating(prev + delta);
-      const actualDelta = round2(nextRating - prev);
+      const nextInternal = clampRating(prev + delta);
+      const actualDelta = round2(nextInternal - prev);
+      const nextGames = state.gamesPlayed + 1;
+      internalRatings.set(id, nextInternal);
       ratings.set(id, {
-        rating: nextRating,
-        lastDelta: actualDelta,
-        gamesPlayed: state.gamesPlayed + 1,
+        rating: nextGames >= MIN_MATCHES_FOR_RATING ? nextInternal : null,
+        lastDelta: nextGames >= MIN_MATCHES_FOR_RATING ? actualDelta : null,
+        gamesPlayed: nextGames,
       });
       playerDeltas[id] = actualDelta;
       sumDeltaB += actualDelta;

@@ -9,12 +9,14 @@ import {
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import type { CourtSide, LiveGameState, Match, TeamId } from '../../../shared/types';
+import type { Lang } from '../../lib/i18n';
 import { GoodGameOverlay } from './GoodGameOverlay';
 import type { MascotMood } from './PickleballMascot';
 import { RollingNumber } from './RollingDigit';
 import { SideoutCourtCanvas, type CourtTransitionCue } from './SideoutCourtCanvas';
 
 interface SideoutMatchStageProps {
+  lang: Lang;
   activeMatch: Match;
   liveState: LiveGameState;
   callout: string;
@@ -41,24 +43,27 @@ function getCardBadge(
   score: number,
   otherScore: number,
   liveState: LiveGameState,
-  gamePointTeam: TeamId | null
+  gamePointTeam: TeamId | null,
+  lang: Lang
 ): { text: string; tone: 'win' | 'close' } | null {
   if (liveState.winnerTeam) return null;
+  const isJa = lang === 'ja';
   if (gamePointTeam === team) {
-    return { text: 'Game point', tone: 'win' };
+    return { text: isJa ? 'ゲームポイント' : 'Game point', tone: 'win' };
   }
   const minMargin = liveState.winByTwo ? 2 : 1;
   const needed = Math.max(liveState.targetScore - score, otherScore + minMargin - score);
   if (needed === 1) {
-    return { text: '1 to win', tone: 'close' };
+    return { text: isJa ? 'あと1点' : '1 to win', tone: 'close' };
   }
   if (needed === 2 && score >= liveState.targetScore - 2) {
-    return { text: '2 to win', tone: 'close' };
+    return { text: isJa ? 'あと2点' : '2 to win', tone: 'close' };
   }
   return null;
 }
 
 export function SideoutMatchStage({
+  lang,
   activeMatch,
   liveState,
   callout,
@@ -132,8 +137,17 @@ export function SideoutMatchStage({
     return () => window.clearTimeout(timer);
   }, [endsSwitched, liveState.servingTeam, liveState.serverNumber, lastRally?.event_type]);
 
-  // Determine top status label (matches Sideout HUD: SIDE-OUT, FIRST SERVER, SECOND SERVER, SIDE OUT, SWITCH ENDS)
-  let statusPrefix = liveState.scoringMode === 'side_out' ? 'SIDE-OUT' : 'RALLY';
+  const isJa = lang === 'ja';
+
+  // Determine top status label
+  let statusPrefix =
+    liveState.scoringMode === 'side_out'
+      ? isJa
+        ? 'サイドアウト制'
+        : 'SIDE-OUT'
+      : isJa
+        ? 'ラリー制'
+        : 'RALLY';
   if (lastRally) {
     const prevMax = Math.max(
       lastRally.team_a_score - (lastRally.rally_winner === 'A' && lastRally.event_type === 'point' ? 1 : 0),
@@ -141,13 +155,20 @@ export function SideoutMatchStage({
     );
     const currMax = Math.max(liveState.teamAScore, liveState.teamBScore);
     if (autoSwitchEnds && prevMax < switchThreshold && currMax >= switchThreshold) {
-      statusPrefix = 'SWITCH ENDS';
+      statusPrefix = isJa ? 'エンド交代' : 'SWITCH ENDS';
     } else if (lastRally.event_type === 'side_out') {
-      statusPrefix = 'SIDE OUT';
+      statusPrefix = isJa ? 'サイドアウト' : 'SIDE OUT';
     } else if (lastRally.event_type === 'server_change') {
-      statusPrefix = 'SECOND SERVER';
+      statusPrefix = isJa ? '2ndサーバー' : 'SECOND SERVER';
     } else if (liveState.gameType === 'doubles' && liveState.scoringMode === 'side_out') {
-      statusPrefix = liveState.serverNumber === 1 ? 'FIRST SERVER' : 'SECOND SERVER';
+      statusPrefix =
+        liveState.serverNumber === 1
+          ? isJa
+            ? '1stサーバー'
+            : 'FIRST SERVER'
+          : isJa
+            ? '2ndサーバー'
+            : 'SECOND SERVER';
     }
   }
 
@@ -156,17 +177,20 @@ export function SideoutMatchStage({
     liveState.teamAScore,
     liveState.teamBScore,
     liveState,
-    gamePointTeam
+    gamePointTeam,
+    lang
   );
   const badgeB = getCardBadge(
     'B',
     liveState.teamBScore,
     liveState.teamAScore,
     liveState,
-    gamePointTeam
+    gamePointTeam,
+    lang
   );
 
-  const sideText = serverSide === 'right' ? 'Right' : 'Left';
+  const sideText =
+    serverSide === 'right' ? (isJa ? '右' : 'Right') : isJa ? '左' : 'Left';
   const compactCallout = callout.replace(/\s+/g, '');
 
   return (
@@ -209,7 +233,8 @@ export function SideoutMatchStage({
             transition={{ duration: 0.16 }}
             className="sideout-hud-pill"
           >
-            {statusPrefix} &nbsp;·&nbsp; TO {liveState.targetScore}
+            {statusPrefix} &nbsp;·&nbsp;{' '}
+            {isJa ? `${liveState.targetScore}点先取` : `TO ${liveState.targetScore}`}
           </motion.div>
         </AnimatePresence>
 
@@ -218,12 +243,15 @@ export function SideoutMatchStage({
         </div>
 
         <div className="sideout-hud-sub">
-          {serverDisplayName} serves · {sideText}
+          {isJa
+            ? `${serverDisplayName} サーブ · ${sideText}`
+            : `${serverDisplayName} serves · ${sideText}`}
         </div>
       </header>
 
       {/* Center 2.5D Court Canvas */}
       <SideoutCourtCanvas
+        lang={lang}
         liveState={liveState}
         serverSide={serverSide}
         endsSwitched={endsSwitched}
@@ -264,16 +292,16 @@ export function SideoutMatchStage({
             className="sideout-circle-text-btn"
             onClick={onUndo}
             disabled={liveState.rallies.length === 0}
-            title="Undo last rally"
+            title={isJa ? '1つ戻す' : 'Undo last rally'}
           >
-            Undo
+            {isJa ? '戻す' : 'Undo'}
           </button>
           <button
             type="button"
             className="sideout-circle-btn"
             onClick={onBack}
-            aria-label="Back to setup"
-            title="Back to setup"
+            aria-label={isJa ? '設定へ戻る' : 'Back to setup'}
+            title={isJa ? '設定へ戻る' : 'Back to setup'}
           >
             <Home size={16} />
           </button>
@@ -307,7 +335,7 @@ export function SideoutMatchStage({
           onClick={onRedo}
           disabled={liveState.redoStack.length === 0}
         >
-          <Redo2 size={13} /> Redo
+          <Redo2 size={13} /> {isJa ? 'やり直す' : 'Redo'}
         </button>
         <button
           type="button"
@@ -315,22 +343,28 @@ export function SideoutMatchStage({
           onClick={onSwapServer}
           disabled={Boolean(liveState.winnerTeam)}
         >
-          <RotateCcw size={13} /> Fix Server
+          <RotateCcw size={13} /> {isJa ? 'サーバー修正' : 'Fix Server'}
         </button>
         <button
           type="button"
           className="sideout-util-btn"
           onClick={() => setManualFlip((f) => !f)}
         >
-          <Users size={13} /> Flip Ends
+          <Users size={13} /> {isJa ? 'エンド反転' : 'Flip Ends'}
         </button>
         <button
           type="button"
           className={`sideout-util-btn ${autoSwitchEnds ? 'is-accent' : ''}`}
           onClick={onToggleAutoSwitchEnds}
-          title={`Automatically switch ends at ${switchThreshold}`}
+          title={
+            isJa
+              ? `${switchThreshold}点で自動エンド交代`
+              : `Automatically switch ends at ${switchThreshold}`
+          }
         >
-          Switch @{switchThreshold}: {autoSwitchEnds ? 'On' : 'Off'}
+          {isJa
+            ? `${switchThreshold}点交代: ${autoSwitchEnds ? 'ON' : 'OFF'}`
+            : `Switch @${switchThreshold}: ${autoSwitchEnds ? 'On' : 'Off'}`}
         </button>
         {liveState.gameType === 'doubles' && (
           <>
@@ -340,7 +374,7 @@ export function SideoutMatchStage({
               onClick={() => onSwapBoxes('A')}
               disabled={Boolean(liveState.winnerTeam)}
             >
-              <ArrowLeftRight size={13} /> Swap A
+              <ArrowLeftRight size={13} /> {isJa ? 'A入替' : 'Swap A'}
             </button>
             <button
               type="button"
@@ -348,7 +382,7 @@ export function SideoutMatchStage({
               onClick={() => onSwapBoxes('B')}
               disabled={Boolean(liveState.winnerTeam)}
             >
-              <ArrowLeftRight size={13} /> Swap B
+              <ArrowLeftRight size={13} /> {isJa ? 'B入替' : 'Swap B'}
             </button>
           </>
         )}
@@ -359,7 +393,7 @@ export function SideoutMatchStage({
             onClick={onFinishEarly}
             disabled={saving}
           >
-            <CheckCircle2 size={13} /> End &amp; Save
+            <CheckCircle2 size={13} /> {isJa ? '終了して保存' : 'End & Save'}
           </button>
         )}
       </div>
@@ -368,6 +402,7 @@ export function SideoutMatchStage({
       <AnimatePresence>
         {liveState.winnerTeam && (
           <GoodGameOverlay
+            lang={lang}
             teamAName={activeMatch.team_a_name}
             teamBName={activeMatch.team_b_name}
             teamAScore={liveState.teamAScore}

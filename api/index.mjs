@@ -146,6 +146,101 @@ function recordRally(state, rallyWinner, matchId) {
   };
 }
 
+// shared/ratingEngine.ts
+var BASELINE_RATING = 3;
+var SCALE_FACTOR = 0.85;
+var MIN_RATING = 2;
+var MAX_RATING = 8;
+var MIN_MATCHES_FOR_RATING = 5;
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+function clampRating(n) {
+  return round2(Math.min(MAX_RATING, Math.max(MIN_RATING, n)));
+}
+function getKFactor(gamesPlayed) {
+  if (gamesPlayed < 5) return 0.35;
+  if (gamesPlayed < 15) return 0.22;
+  return 0.12;
+}
+function computeDuprRatings(players, matches) {
+  const internalRatings = /* @__PURE__ */ new Map();
+  const ratings = /* @__PURE__ */ new Map();
+  for (const p of players) {
+    ratings.set(p.id, {
+      rating: null,
+      lastDelta: null,
+      gamesPlayed: 0
+    });
+  }
+  const completed = matches.filter((m) => m.status === "completed" && m.winner_team !== null).sort((a, b) => {
+    const tA = new Date(a.completed_at ?? a.started_at).getTime();
+    const tB = new Date(b.completed_at ?? b.started_at).getTime();
+    return tA - tB;
+  });
+  const matchDeltas = /* @__PURE__ */ new Map();
+  for (const m of completed) {
+    const teamAIds = m.participants.filter((p) => p.team === "A").map((p) => p.player_id);
+    const teamBIds = m.participants.filter((p) => p.team === "B").map((p) => p.player_id);
+    if (teamAIds.length === 0 || teamBIds.length === 0) continue;
+    const allRatedOnCourt = [...teamAIds, ...teamBIds].map((id) => ratings.get(id)?.rating ?? internalRatings.get(id)).filter((r) => typeof r === "number");
+    const courtFallback = allRatedOnCourt.length > 0 ? allRatedOnCourt.reduce((acc, r) => acc + r, 0) / allRatedOnCourt.length : BASELINE_RATING;
+    const getEffective = (id) => ratings.get(id)?.rating ?? internalRatings.get(id) ?? courtFallback;
+    const teamARating = teamAIds.reduce((sum, id) => sum + getEffective(id), 0) / teamAIds.length;
+    const teamBRating = teamBIds.reduce((sum, id) => sum + getEffective(id), 0) / teamBIds.length;
+    const expectedA = 1 / (1 + Math.pow(10, -(teamARating - teamBRating) / SCALE_FACTOR));
+    const expectedB = 1 - expectedA;
+    const totalPoints = Math.max(1, m.team_a_score + m.team_b_score);
+    const winA = m.winner_team === "A" ? 1 : 0;
+    const winB = m.winner_team === "B" ? 1 : 0;
+    const actualA = 0.55 * winA + 0.45 * (m.team_a_score / totalPoints);
+    const actualB = 0.55 * winB + 0.45 * (m.team_b_score / totalPoints);
+    const playerDeltas = {};
+    let sumDeltaA = 0;
+    let sumDeltaB = 0;
+    for (const id of teamAIds) {
+      const state = ratings.get(id) ?? { rating: null, lastDelta: null, gamesPlayed: 0 };
+      const k = getKFactor(state.gamesPlayed);
+      const prev = internalRatings.get(id) ?? courtFallback;
+      const delta = round2(k * (actualA - expectedA));
+      const nextInternal = clampRating(prev + delta);
+      const actualDelta = round2(nextInternal - prev);
+      const nextGames = state.gamesPlayed + 1;
+      internalRatings.set(id, nextInternal);
+      ratings.set(id, {
+        rating: nextGames >= MIN_MATCHES_FOR_RATING ? nextInternal : null,
+        lastDelta: nextGames >= MIN_MATCHES_FOR_RATING ? actualDelta : null,
+        gamesPlayed: nextGames
+      });
+      playerDeltas[id] = actualDelta;
+      sumDeltaA += actualDelta;
+    }
+    for (const id of teamBIds) {
+      const state = ratings.get(id) ?? { rating: null, lastDelta: null, gamesPlayed: 0 };
+      const k = getKFactor(state.gamesPlayed);
+      const prev = internalRatings.get(id) ?? courtFallback;
+      const delta = round2(k * (actualB - expectedB));
+      const nextInternal = clampRating(prev + delta);
+      const actualDelta = round2(nextInternal - prev);
+      const nextGames = state.gamesPlayed + 1;
+      internalRatings.set(id, nextInternal);
+      ratings.set(id, {
+        rating: nextGames >= MIN_MATCHES_FOR_RATING ? nextInternal : null,
+        lastDelta: nextGames >= MIN_MATCHES_FOR_RATING ? actualDelta : null,
+        gamesPlayed: nextGames
+      });
+      playerDeltas[id] = actualDelta;
+      sumDeltaB += actualDelta;
+    }
+    matchDeltas.set(m.id, {
+      teamADelta: round2(sumDeltaA / teamAIds.length),
+      teamBDelta: round2(sumDeltaB / teamBIds.length),
+      playerDeltas
+    });
+  }
+  return { ratings, matchDeltas };
+}
+
 // shared/rotationEngine.ts
 function pairKey(a, b) {
   return a < b ? `${a}|${b}` : `${b}|${a}`;
@@ -406,95 +501,6 @@ function optimizeDoublesMatchups(playing, numCourts, partnerCounts, opponentCoun
     });
   }
   return matches;
-}
-
-// shared/ratingEngine.ts
-var BASELINE_RATING = 3;
-var SCALE_FACTOR = 0.85;
-var MIN_RATING = 2;
-var MAX_RATING = 8;
-function round2(n) {
-  return Math.round(n * 100) / 100;
-}
-function clampRating(n) {
-  return round2(Math.min(MAX_RATING, Math.max(MIN_RATING, n)));
-}
-function getKFactor(gamesPlayed) {
-  if (gamesPlayed < 5) return 0.35;
-  if (gamesPlayed < 15) return 0.22;
-  return 0.12;
-}
-function computeDuprRatings(players, matches) {
-  const ratings = /* @__PURE__ */ new Map();
-  for (const p of players) {
-    ratings.set(p.id, {
-      rating: null,
-      lastDelta: null,
-      gamesPlayed: 0
-    });
-  }
-  const completed = matches.filter((m) => m.status === "completed" && m.winner_team !== null).sort((a, b) => {
-    const tA = new Date(a.completed_at ?? a.started_at).getTime();
-    const tB = new Date(b.completed_at ?? b.started_at).getTime();
-    return tA - tB;
-  });
-  const matchDeltas = /* @__PURE__ */ new Map();
-  for (const m of completed) {
-    const teamAIds = m.participants.filter((p) => p.team === "A").map((p) => p.player_id);
-    const teamBIds = m.participants.filter((p) => p.team === "B").map((p) => p.player_id);
-    if (teamAIds.length === 0 || teamBIds.length === 0) continue;
-    const allRatedOnCourt = [...teamAIds, ...teamBIds].map((id) => ratings.get(id)?.rating).filter((r) => typeof r === "number");
-    const courtFallback = allRatedOnCourt.length > 0 ? allRatedOnCourt.reduce((acc, r) => acc + r, 0) / allRatedOnCourt.length : BASELINE_RATING;
-    const getEffective = (id) => ratings.get(id)?.rating ?? courtFallback;
-    const teamARating = teamAIds.reduce((sum, id) => sum + getEffective(id), 0) / teamAIds.length;
-    const teamBRating = teamBIds.reduce((sum, id) => sum + getEffective(id), 0) / teamBIds.length;
-    const expectedA = 1 / (1 + Math.pow(10, -(teamARating - teamBRating) / SCALE_FACTOR));
-    const expectedB = 1 - expectedA;
-    const totalPoints = Math.max(1, m.team_a_score + m.team_b_score);
-    const winA = m.winner_team === "A" ? 1 : 0;
-    const winB = m.winner_team === "B" ? 1 : 0;
-    const actualA = 0.55 * winA + 0.45 * (m.team_a_score / totalPoints);
-    const actualB = 0.55 * winB + 0.45 * (m.team_b_score / totalPoints);
-    const playerDeltas = {};
-    let sumDeltaA = 0;
-    let sumDeltaB = 0;
-    for (const id of teamAIds) {
-      const state = ratings.get(id) ?? { rating: null, lastDelta: null, gamesPlayed: 0 };
-      const k = getKFactor(state.gamesPlayed);
-      const prev = state.rating ?? courtFallback;
-      const delta = round2(k * (actualA - expectedA));
-      const nextRating = clampRating(prev + delta);
-      const actualDelta = round2(nextRating - prev);
-      ratings.set(id, {
-        rating: nextRating,
-        lastDelta: actualDelta,
-        gamesPlayed: state.gamesPlayed + 1
-      });
-      playerDeltas[id] = actualDelta;
-      sumDeltaA += actualDelta;
-    }
-    for (const id of teamBIds) {
-      const state = ratings.get(id) ?? { rating: null, lastDelta: null, gamesPlayed: 0 };
-      const k = getKFactor(state.gamesPlayed);
-      const prev = state.rating ?? courtFallback;
-      const delta = round2(k * (actualB - expectedB));
-      const nextRating = clampRating(prev + delta);
-      const actualDelta = round2(nextRating - prev);
-      ratings.set(id, {
-        rating: nextRating,
-        lastDelta: actualDelta,
-        gamesPlayed: state.gamesPlayed + 1
-      });
-      playerDeltas[id] = actualDelta;
-      sumDeltaB += actualDelta;
-    }
-    matchDeltas.set(m.id, {
-      teamADelta: round2(sumDeltaA / teamAIds.length),
-      teamBDelta: round2(sumDeltaB / teamBIds.length),
-      playerDeltas
-    });
-  }
-  return { ratings, matchDeltas };
 }
 
 // shared/statsEngine.ts
@@ -2096,6 +2102,25 @@ app.get("/api/export-project", (_req, res) => {
   res.download(zipPath, "sideout-pb-scoring.zip");
 });
 var SEED_COLORS = ["#1D4ED8", "#15803D", "#E25747", "#B45309", "#0E7490", "#BE185D", "#3F6212"];
+async function syncPlayerRatings(existingPlayers) {
+  const [players, matches] = await Promise.all([
+    existingPlayers ? Promise.resolve(existingPlayers) : repo.listPlayers(),
+    repo.listMatches()
+  ]);
+  const { ratings } = computeDuprRatings(players, matches);
+  const updatedList = [];
+  for (const p of players) {
+    const computed = ratings.get(p.id)?.rating ?? null;
+    const current = p.skill_rating ?? null;
+    if (computed !== current) {
+      const updated = await repo.updatePlayer(p.id, { skill_rating: computed });
+      updatedList.push(updated ?? { ...p, skill_rating: computed });
+    } else {
+      updatedList.push(p);
+    }
+  }
+  return updatedList;
+}
 app.get("/api/players", async (_req, res) => {
   try {
     let players = await repo.listPlayers();
@@ -2114,6 +2139,7 @@ app.get("/api/players", async (_req, res) => {
         players = await repo.listPlayers();
       }
     }
+    players = await syncPlayerRatings(players);
     res.json(players);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to list players" });
@@ -2427,6 +2453,9 @@ app.patch("/api/matches/:id", async (req, res) => {
       res.status(404).json({ error: "Match not found" });
       return;
     }
+    if (updated.status === "completed") {
+      await syncPlayerRatings().catch(() => void 0);
+    }
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to update match" });
@@ -2459,6 +2488,7 @@ app.post("/api/matches/:id/quick-score", async (req, res) => {
       completed_at: now,
       duration_seconds: existing.duration_seconds || duration
     });
+    await syncPlayerRatings().catch(() => void 0);
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to save quick score" });
@@ -2467,6 +2497,9 @@ app.post("/api/matches/:id/quick-score", async (req, res) => {
 app.delete("/api/matches/:id", async (req, res) => {
   try {
     const ok = await repo.deleteMatch(req.params.id);
+    if (ok) {
+      await syncPlayerRatings().catch(() => void 0);
+    }
     res.json({ deleted: ok });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to delete match" });

@@ -26,7 +26,7 @@ import {
   swapTeamBoxesManually,
   undoLastRally,
 } from '../../shared/pickleballEngine';
-import { formatRating } from '../../shared/ratingEngine';
+import { computeDuprRatings, formatRating } from '../../shared/ratingEngine';
 import type {
   GameType,
   LiveGameState,
@@ -44,6 +44,7 @@ import { SideoutMatchStage } from './match/SideoutMatchStage';
 interface ScorekeeperViewProps {
   lang: Lang;
   players: Player[];
+  matches: Match[];
   activeMatch: Match | null;
   inProgressMatches: Match[];
   onSelectMatch: (match: Match | null) => void;
@@ -61,6 +62,7 @@ function formatDuration(seconds: number): string {
 export function ScorekeeperView({
   lang,
   players,
+  matches,
   activeMatch,
   inProgressMatches,
   onSelectMatch,
@@ -70,6 +72,12 @@ export function ScorekeeperView({
 }: ScorekeeperViewProps) {
   const t = copy[lang].scorekeeper;
   const playerMap = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
+  const liveRatings = useMemo(
+    () => computeDuprRatings(players, matches).ratings,
+    [players, matches]
+  );
+  const displayPlayerRating = (p: Player) =>
+    formatRating(liveRatings.get(p.id)?.rating ?? p.skill_rating);
 
   const [gameType, setGameType] = useState<GameType>('doubles');
   const [scoringMode, setScoringMode] = useState<ScoringMode>('side_out');
@@ -342,6 +350,35 @@ export function ScorekeeperView({
     return p?.nickname?.trim() || p?.name.split(' ')[0] || fallback;
   };
 
+  const activeSlotIds =
+    gameType === 'doubles' ? [teamA1, teamA2, teamB1, teamB2] : [teamA1, teamB1];
+  const hasDuplicatePlayers =
+    activeSlotIds.some((id) => Boolean(id)) &&
+    new Set(activeSlotIds.filter(Boolean)).size !== activeSlotIds.filter(Boolean).length;
+
+  const isTakenInOtherSlot = (slot: 'A1' | 'A2' | 'B1' | 'B2', playerId: string) => {
+    if (slot !== 'A1' && teamA1 === playerId) return true;
+    if (gameType === 'doubles' && slot !== 'A2' && teamA2 === playerId) return true;
+    if (slot !== 'B1' && teamB1 === playerId) return true;
+    if (gameType === 'doubles' && slot !== 'B2' && teamB2 === playerId) return true;
+    return false;
+  };
+
+  const handleSelectSlot = (slot: 'A1' | 'A2' | 'B1' | 'B2', nextId: string) => {
+    const currentVal =
+      slot === 'A1' ? teamA1 : slot === 'A2' ? teamA2 : slot === 'B1' ? teamB1 : teamB2;
+
+    if (slot !== 'A1' && teamA1 === nextId) setTeamA1(currentVal);
+    else if (gameType === 'doubles' && slot !== 'A2' && teamA2 === nextId) setTeamA2(currentVal);
+    else if (slot !== 'B1' && teamB1 === nextId) setTeamB1(currentVal);
+    else if (gameType === 'doubles' && slot !== 'B2' && teamB2 === nextId) setTeamB2(currentVal);
+
+    if (slot === 'A1') setTeamA1(nextId);
+    else if (slot === 'A2') setTeamA2(nextId);
+    else if (slot === 'B1') setTeamB1(nextId);
+    else setTeamB2(nextId);
+  };
+
   // Match Setup View (compact session-scheduler aligned layout)
   if (!activeMatch || !liveState) {
     return (
@@ -439,13 +476,17 @@ export function ScorekeeperView({
                   id="quick-a1"
                   className="select"
                   value={teamA1}
-                  onChange={(e) => setTeamA1(e.target.value)}
+                  onChange={(e) => handleSelectSlot('A1', e.target.value)}
                 >
-                  {players.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({formatRating(p.skill_rating)})
-                    </option>
-                  ))}
+                  {players.map((p) => {
+                    const taken = isTakenInOtherSlot('A1', p.id);
+                    return (
+                      <option key={p.id} value={p.id} disabled={taken}>
+                        {p.name} ({displayPlayerRating(p)})
+                        {taken ? (lang === 'ja' ? ' · 選択済み' : ' · Selected') : ''}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
               {gameType === 'doubles' && (
@@ -457,13 +498,17 @@ export function ScorekeeperView({
                     id="quick-a2"
                     className="select"
                     value={teamA2}
-                    onChange={(e) => setTeamA2(e.target.value)}
+                    onChange={(e) => handleSelectSlot('A2', e.target.value)}
                   >
-                    {players.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({formatRating(p.skill_rating)})
-                      </option>
-                    ))}
+                    {players.map((p) => {
+                      const taken = isTakenInOtherSlot('A2', p.id);
+                      return (
+                        <option key={p.id} value={p.id} disabled={taken}>
+                          {p.name} ({displayPlayerRating(p)})
+                          {taken ? (lang === 'ja' ? ' · 選択済み' : ' · Selected') : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               )}
@@ -491,13 +536,17 @@ export function ScorekeeperView({
                   id="quick-b1"
                   className="select"
                   value={teamB1}
-                  onChange={(e) => setTeamB1(e.target.value)}
+                  onChange={(e) => handleSelectSlot('B1', e.target.value)}
                 >
-                  {players.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({formatRating(p.skill_rating)})
-                    </option>
-                  ))}
+                  {players.map((p) => {
+                    const taken = isTakenInOtherSlot('B1', p.id);
+                    return (
+                      <option key={p.id} value={p.id} disabled={taken}>
+                        {p.name} ({displayPlayerRating(p)})
+                        {taken ? (lang === 'ja' ? ' · 選択済み' : ' · Selected') : ''}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
               {gameType === 'doubles' && (
@@ -509,13 +558,17 @@ export function ScorekeeperView({
                     id="quick-b2"
                     className="select"
                     value={teamB2}
-                    onChange={(e) => setTeamB2(e.target.value)}
+                    onChange={(e) => handleSelectSlot('B2', e.target.value)}
                   >
-                    {players.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({formatRating(p.skill_rating)})
-                      </option>
-                    ))}
+                    {players.map((p) => {
+                      const taken = isTakenInOtherSlot('B2', p.id);
+                      return (
+                        <option key={p.id} value={p.id} disabled={taken}>
+                          {p.name} ({displayPlayerRating(p)})
+                          {taken ? (lang === 'ja' ? ' · 選択済み' : ' · Selected') : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               )}
@@ -614,7 +667,11 @@ export function ScorekeeperView({
               id="btn-start-quick-match"
               className="btn btn-lime"
               onClick={handleStartQuickMatch}
-              disabled={creating || players.length < (gameType === 'doubles' ? 4 : 2)}
+              disabled={
+                creating ||
+                hasDuplicatePlayers ||
+                players.length < (gameType === 'doubles' ? 4 : 2)
+              }
             >
               <Play size={16} /> {t.startMatch}
             </button>
@@ -741,6 +798,7 @@ export function ScorekeeperView({
       {/* Main Scoring Surface */}
       {viewMode === 'court' ? (
         <SideoutMatchStage
+          lang={lang}
           activeMatch={activeMatch}
           liveState={liveState}
           callout={callout}

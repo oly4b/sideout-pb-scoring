@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { computeStandings } from '../../shared/statsEngine';
+import { VENUES } from '../../shared/venues';
 import type {
   Match,
   Player,
@@ -96,6 +97,7 @@ export function SessionsView({
   const [quickB, setQuickB] = useState('7');
 
   const [title, setTitle] = useState('');
+  const [venueChoice, setVenueChoice] = useState<string>('mabi');
   const [location, setLocation] = useState('');
   const [format, setFormat] = useState<SessionFormat>('rotating_partners');
   const [courtsCount, setCourtsCount] = useState(2);
@@ -167,6 +169,8 @@ export function SessionsView({
       setTitle(
         `${shortDate} ${booked.venue_short_name} (${booked.start_hour}:00–${booked.end_hour}:00)`
       );
+      const isKnownVenue = VENUES.some((v) => v.id === booked.venue_id);
+      setVenueChoice(isKnownVenue ? booked.venue_id : 'other');
       setLocation(booked.venue_full_name);
       setFormat('rotating_partners');
       setCourtsCount(Math.max(1, Math.min(3, Math.floor(Math.max(4, resolvedIds.length) / 4))));
@@ -206,7 +210,9 @@ export function SessionsView({
       weekday: 'long',
     });
     setTitle(lang === 'ja' ? `桃dinks ${today}セッション` : `桃dinks ${today} Open Play`);
-    setLocation(lang === 'ja' ? '真備総合公園 体育館' : 'Mabi General Park Gym');
+    const defaultVenue = VENUES.find((v) => v.id === 'mabi') ?? VENUES[0];
+    setVenueChoice(defaultVenue.id);
+    setLocation(defaultVenue.fullName);
     setFormat('rotating_partners');
     setCourtsCount(Math.max(1, Math.min(3, Math.floor(players.length / 4))));
     setCheckedInIds(players.slice(0, Math.min(8, players.length)).map((p) => p.id));
@@ -222,6 +228,17 @@ export function SessionsView({
   const handleQuickAddPlayer = async () => {
     const trimmed = quickPlayerName.trim();
     if (!trimmed) return;
+    const duplicate = players.some(
+      (p) => p.name.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (duplicate) {
+      onNotify(
+        lang === 'ja'
+          ? `${trimmed} はすでに登録されています`
+          : `${trimmed} is already in the roster`
+      );
+      return;
+    }
     try {
       const created = await api.createPlayer({
         name: trimmed,
@@ -928,15 +945,53 @@ export function SessionsView({
                 />
               </div>
               <div className="field-group">
-                <label className="field-label" htmlFor="sess-loc">
+                <label className="field-label" htmlFor="sess-venue">
                   {lang === 'ja' ? '会場 / 体育館' : 'Courts / Venue'}
                 </label>
-                <input
-                  id="sess-loc"
-                  className="input"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                />
+                <select
+                  id="sess-venue"
+                  className="select"
+                  value={venueChoice}
+                  onChange={(e) => {
+                    const nextId = e.target.value;
+                    setVenueChoice(nextId);
+                    if (nextId === 'other') {
+                      setLocation('');
+                    } else {
+                      const found = VENUES.find((v) => v.id === nextId);
+                      setLocation(found?.fullName ?? '');
+                    }
+                  }}
+                >
+                  {VENUES.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.shortName} (
+                      {v.courtType === 'indoor'
+                        ? lang === 'ja'
+                          ? '屋内'
+                          : 'Indoor'
+                        : lang === 'ja'
+                          ? '屋外'
+                          : 'Outdoor'}
+                      )
+                    </option>
+                  ))}
+                  <option value="other">
+                    {lang === 'ja' ? '手入力 / その他' : 'Manual entry / Other'}
+                  </option>
+                </select>
+                {venueChoice === 'other' && (
+                  <input
+                    id="sess-loc"
+                    className="input"
+                    style={{ marginTop: 6 }}
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    placeholder={
+                      lang === 'ja' ? '会場名を入力...' : 'Enter custom venue name...'
+                    }
+                  />
+                )}
               </div>
             </div>
 

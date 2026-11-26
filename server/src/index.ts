@@ -4,6 +4,7 @@ import path from 'node:path';
 import cors from 'cors';
 import express from 'express';
 import { createInitialLiveState } from '../../shared/pickleballEngine';
+import { computeDuprRatings } from '../../shared/ratingEngine';
 import { generateNextRound } from '../../shared/rotationEngine';
 import { computePlayerDetailStats, computeStandings } from '../../shared/statsEngine';
 import type { Match, Player } from '../../shared/types';
@@ -74,6 +75,27 @@ app.get('/api/export-project', (_req, res) => {
 
 const SEED_COLORS = ['#1D4ED8', '#15803D', '#E25747', '#B45309', '#0E7490', '#BE185D', '#3F6212'];
 
+async function syncPlayerRatings(existingPlayers?: Player[]): Promise<Player[]> {
+  const [players, matches] = await Promise.all([
+    existingPlayers ? Promise.resolve(existingPlayers) : repo.listPlayers(),
+    repo.listMatches(),
+  ]);
+  const { ratings } = computeDuprRatings(players, matches);
+  const updatedList: Player[] = [];
+
+  for (const p of players) {
+    const computed = ratings.get(p.id)?.rating ?? null;
+    const current = p.skill_rating ?? null;
+    if (computed !== current) {
+      const updated = await repo.updatePlayer(p.id, { skill_rating: computed });
+      updatedList.push(updated ?? { ...p, skill_rating: computed });
+    } else {
+      updatedList.push(p);
+    }
+  }
+  return updatedList;
+}
+
 // Players
 app.get('/api/players', async (_req, res) => {
   try {
@@ -93,6 +115,7 @@ app.get('/api/players', async (_req, res) => {
         players = await repo.listPlayers();
       }
     }
+    players = await syncPlayerRatings(players);
     res.json(players);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to list players' });
@@ -446,6 +469,9 @@ app.patch('/api/matches/:id', async (req, res) => {
       res.status(404).json({ error: 'Match not found' });
       return;
     }
+    if (updated.status === 'completed') {
+      await syncPlayerRatings().catch(() => undefined);
+    }
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to update match' });
@@ -479,6 +505,7 @@ app.post('/api/matches/:id/quick-score', async (req, res) => {
       completed_at: now,
       duration_seconds: existing.duration_seconds || duration,
     });
+    await syncPlayerRatings().catch(() => undefined);
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to save quick score' });
@@ -488,6 +515,9 @@ app.post('/api/matches/:id/quick-score', async (req, res) => {
 app.delete('/api/matches/:id', async (req, res) => {
   try {
     const ok = await repo.deleteMatch(req.params.id);
+    if (ok) {
+      await syncPlayerRatings().catch(() => undefined);
+    }
     res.json({ deleted: ok });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to delete match' });

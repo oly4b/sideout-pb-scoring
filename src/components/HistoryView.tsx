@@ -142,6 +142,9 @@ export function HistoryView({
   const [playerFilter, setPlayerFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'in_progress'>('all');
   const [inspectMatch, setInspectMatch] = useState<Match | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Match | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   const filtered = useMemo(() => {
     return matches.filter((m) => {
@@ -163,14 +166,21 @@ export function HistoryView({
   const completedCount = matches.filter((m) => m.status === 'completed').length;
   const totalRallies = matches.reduce((acc, m) => acc + (m.rallies?.length ?? 0), 0);
 
-  const handleDelete = async (id: string) => {
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    if (deleteConfirmText.trim().toUpperCase() !== 'DELETE') return;
     try {
-      await api.deleteMatch(id);
+      setDeleting(true);
+      await api.deleteMatch(deleteTarget.id);
+      setDeleteTarget(null);
+      setDeleteConfirmText('');
       setInspectMatch(null);
       await onRefreshAll();
-      onNotify('Match deleted from history');
+      onNotify(lang === 'ja' ? '試合履歴を削除しました' : 'Match deleted from history');
     } catch (err) {
       onNotify(err instanceof Error ? err.message : 'Failed to delete match');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -445,10 +455,14 @@ export function HistoryView({
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
               <button
                 type="button"
+                id="btn-delete-match"
                 className="btn btn-danger btn-sm"
-                onClick={() => handleDelete(inspectMatch.id)}
+                onClick={() => {
+                  setDeleteConfirmText('');
+                  setDeleteTarget(inspectMatch);
+                }}
               >
-                <Trash2 size={14} /> Delete Match
+                <Trash2 size={14} /> {lang === 'ja' ? '試合を削除' : 'Delete Match'}
               </button>
               <div style={{ display: 'flex', gap: 8 }}>
                 {inspectMatch.status !== 'completed' && (
@@ -473,6 +487,108 @@ export function HistoryView({
                 </button>
               </div>
             </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {deleteTarget && (
+        <div
+          className="modal-backdrop"
+          onClick={() => {
+            if (!deleting) setDeleteTarget(null);
+          }}
+        >
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--danger)' }}>
+                <Trash2 size={18} />
+                <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>
+                  {lang === 'ja' ? '試合削除の確認' : 'Confirm Match Deletion'}
+                </h2>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <p style={{ margin: 0, fontSize: '0.88rem', lineHeight: 1.5 }}>
+                {lang === 'ja' ? (
+                  <>
+                    <strong>
+                      {deleteTarget.team_a_name} vs {deleteTarget.team_b_name}
+                    </strong>{' '}
+                    ({deleteTarget.team_a_score} – {deleteTarget.team_b_score}) を削除します。この操作は取り消せません。
+                  </>
+                ) : (
+                  <>
+                    You are about to permanently delete{' '}
+                    <strong>
+                      {deleteTarget.team_a_name} vs {deleteTarget.team_b_name}
+                    </strong>{' '}
+                    ({deleteTarget.team_a_score} – {deleteTarget.team_b_score}). This cannot be
+                    undone.
+                  </>
+                )}
+              </p>
+              {deleteTarget.status === 'completed' && (
+                <div
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--danger-soft)',
+                    border: '1px solid rgba(225, 29, 72, 0.25)',
+                    fontSize: '0.8rem',
+                    color: 'var(--danger)',
+                    fontWeight: 700,
+                  }}
+                >
+                  {lang === 'ja'
+                    ? '完了済みの試合を削除すると、プレイヤーのレーティングと順位が再計算されます。'
+                    : 'Deleting a completed match will recalculate player ratings and standings.'}
+                </div>
+              )}
+              <div className="field-group">
+                <label className="field-label" htmlFor="delete-match-confirm">
+                  {lang === 'ja'
+                    ? '続行するには DELETE と入力してください'
+                    : 'Type DELETE to confirm'}
+                </label>
+                <input
+                  id="delete-match-confirm"
+                  type="text"
+                  className="input"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="DELETE"
+                  autoComplete="off"
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={deleting}
+                >
+                  {lang === 'ja' ? 'キャンセル' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  id="btn-confirm-delete-match"
+                  className="btn btn-danger"
+                  onClick={() => void handleConfirmDelete()}
+                  disabled={deleting || deleteConfirmText.trim().toUpperCase() !== 'DELETE'}
+                >
+                  <Trash2 size={15} />{' '}
+                  {lang === 'ja' ? '完全に削除する' : 'Delete Match'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
