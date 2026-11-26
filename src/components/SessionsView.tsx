@@ -107,6 +107,7 @@ export function SessionsView({
   const [busy, setBusy] = useState(false);
   const [schedulerSessions, setSchedulerSessions] = useState<SchedulerBookedSession[]>([]);
   const [syncingScheduler, setSyncingScheduler] = useState(false);
+  const [expandedGoingKey, setExpandedGoingKey] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Session | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
@@ -449,6 +450,7 @@ export function SessionsView({
             <div className="grid-2">
               {schedulerSessions.map((b) => {
                 const yesList = b.attendees.filter((a) => a.status === 'yes');
+                const isGoingOpen = expandedGoingKey === b.date_key;
                 return (
                   <div key={b.date_key} className="scheduler-booked-card">
                     <div style={{ minWidth: 0, flex: 1 }}>
@@ -461,7 +463,7 @@ export function SessionsView({
                         </span>
                       </div>
                       <div className="scheduler-booked-venue">
-                        <MapPin size={13} style={{ color: 'var(--brand-emerald)' }} />
+                        <MapPin size={13} style={{ color: 'var(--brand-emerald)', flexShrink: 0 }} />
                         <span>{b.venue_full_name}</span>
                         {b.map_url && (
                           <a
@@ -474,9 +476,8 @@ export function SessionsView({
                             <ExternalLink size={12} />
                           </a>
                         )}
-                        <span className="scheduler-going-pill">
-                          {lang === 'ja' ? `参加 ${yesList.length}` : `Going: ${yesList.length}`}
-                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
                         <span className="scheduler-booked-type">
                           {b.court_type === 'indoor'
                             ? lang === 'ja'
@@ -486,9 +487,28 @@ export function SessionsView({
                               ? '屋外'
                               : 'Outdoor'}
                         </span>
+                        <button
+                          type="button"
+                          className="scheduler-going-pill tactile-press"
+                          style={{ cursor: yesList.length > 0 ? 'pointer' : 'default' }}
+                          aria-expanded={yesList.length > 0 ? isGoingOpen : undefined}
+                          onClick={() => {
+                            if (yesList.length === 0) return;
+                            setExpandedGoingKey((prev) => (prev === b.date_key ? null : b.date_key));
+                          }}
+                          title={
+                            yesList.length > 0
+                              ? lang === 'ja'
+                                ? 'タップして参加者を表示'
+                                : 'Tap to view players'
+                              : undefined
+                          }
+                        >
+                          {lang === 'ja' ? `参加 ${yesList.length}` : `Going: ${yesList.length}`}
+                        </button>
                       </div>
-                      {yesList.length > 0 && (
-                        <div style={{ fontSize: '0.74rem', color: 'var(--ink-secondary)', marginTop: 4 }}>
+                      {isGoingOpen && yesList.length > 0 && (
+                        <div style={{ fontSize: '0.74rem', color: 'var(--ink-secondary)', marginTop: 5 }}>
                           {yesList.map((a) => a.attendee_name).join(', ')}
                         </div>
                       )}
