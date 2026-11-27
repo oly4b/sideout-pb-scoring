@@ -173,6 +173,7 @@ export function HistoryView({
   } | null>(null);
 
   const ratingMap = useMemo(() => computeDuprRatings(players, matches).ratings, [players, matches]);
+  const playerMap = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
 
   const filtered = useMemo(() => {
     return matches.filter((m) => {
@@ -686,6 +687,13 @@ export function HistoryView({
                         {r.outcome_tag && (
                           <span className="tag" style={{ marginLeft: 6, fontSize: '0.68rem', padding: '1px 6px' }}>
                             {getOutcomeTagLabel(r.outcome_tag, lang)}
+                            {r.outcome_player_id
+                              ? ` · ${
+                                  playerMap.get(r.outcome_player_id)?.nickname?.trim() ||
+                                  playerMap.get(r.outcome_player_id)?.name.split(' ')[0] ||
+                                  ''
+                                }`
+                              : ''}
                           </span>
                         )}
                       </span>

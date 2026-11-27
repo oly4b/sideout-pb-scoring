@@ -300,6 +300,7 @@ export function recordRally(
     receiving_player_id: preReceivingPlayerId,
     serving_side: preServingSide,
     outcome_tag: null,
+    outcome_player_id: null,
   };
 
   return {
@@ -805,15 +806,20 @@ export function getOutcomeTagLabel(tag: RallyOutcomeTag, lang: 'en' | 'ja'): str
   return lang === 'ja' ? found.ja : found.en;
 }
 
-/** Attaches or clears an objective `RallyOutcomeTag` on a specific rally sequence number in `LiveGameState`. */
+/** Attaches or clears an objective `RallyOutcomeTag` (and optional last-touch player) on a rally in `LiveGameState`. */
 export function tagRallyOutcome(
   state: LiveGameState,
   seq: number,
-  tag: RallyOutcomeTag | null
+  tag: RallyOutcomeTag | null,
+  playerId: string | null = null
 ): LiveGameState {
   return {
     ...state,
-    rallies: state.rallies.map((r) => (r.seq === seq ? { ...r, outcome_tag: tag } : r)),
+    rallies: state.rallies.map((r) =>
+      r.seq === seq
+        ? { ...r, outcome_tag: tag, outcome_player_id: tag ? (playerId ?? null) : null }
+        : r
+    ),
     version: (state.version ?? state.rallies.length) + 1,
   };
 }
@@ -833,6 +839,7 @@ export function getMatchRalliesWithTags(match: Pick<Match, 'rallies' | 'live_sta
     return {
       ...r,
       outcome_tag: r.outcome_tag ?? lr.outcome_tag ?? null,
+      outcome_player_id: r.outcome_player_id ?? lr.outcome_player_id ?? null,
       serving_player_id: r.serving_player_id ?? lr.serving_player_id ?? null,
       receiving_player_id: r.receiving_player_id ?? lr.receiving_player_id ?? null,
       serving_side: r.serving_side ?? lr.serving_side ?? null,
@@ -1005,9 +1012,12 @@ export function computePlayerSkillProfiles(
         }
       }
 
-      // Outcome tag attribution
+      // Outcome tag attribution (prefer explicit last-touch player_id when recorded)
       if (r.outcome_tag) {
-        if (r.outcome_tag === 'service_fault') {
+        if (r.outcome_player_id && profiles.has(r.outcome_player_id)) {
+          const tProf = profiles.get(r.outcome_player_id)!;
+          tProf.tagCounts[r.outcome_tag] = (tProf.tagCounts[r.outcome_tag] ?? 0) + 1;
+        } else if (r.outcome_tag === 'service_fault') {
           if (servingPlayerId) {
             const sProf = profiles.get(servingPlayerId);
             if (sProf) {

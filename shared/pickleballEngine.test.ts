@@ -660,4 +660,60 @@ describe('pickleballEngine', () => {
     // p1=50%, p3=0% -> expected=25%, actual with p3=0% -> -25% synergy
     expect(splits.get('p1')!.partnerSynergy.get('p3')).toBe(-25);
   });
+
+  it('attributes 2v2 outcome tags exclusively to the selected last-touch player when provided', () => {
+    let s = createInitialLiveState({
+      gameType: 'doubles',
+      scoringMode: 'side_out',
+      targetScore: 11,
+      winByTwo: true,
+      initialServingTeam: 'A',
+      teamAPlayers: ['A1', 'A2'],
+      teamBPlayers: ['B1', 'B2'],
+    });
+
+    // Team A wins rally 1 via B2 hitting Out; Team A wins rally 2 via A2 Winner
+    s = recordRally(s, 'A', 'm_last_touch');
+    s = tagRallyOutcome(s, 1, 'out', 'B2');
+    s = recordRally(s, 'A', 'm_last_touch');
+    s = tagRallyOutcome(s, 2, 'winner', 'A2');
+
+    const match: Match = {
+      id: 'm_last_touch',
+      session_id: null,
+      round_number: null,
+      court_number: null,
+      game_type: 'doubles',
+      scoring_mode: 'side_out',
+      target_score: 11,
+      win_by_two: true,
+      status: 'completed',
+      team_a_name: 'A1 & A2',
+      team_b_name: 'B1 & B2',
+      team_a_score: 2,
+      team_b_score: 0,
+      winner_team: 'A',
+      started_at: '2026-11-28T00:00:00Z',
+      completed_at: '2026-11-28T00:05:00Z',
+      duration_seconds: 300,
+      participants: [
+        { match_id: 'm_last_touch', player_id: 'A1', team: 'A', starting_side: 'right' },
+        { match_id: 'm_last_touch', player_id: 'A2', team: 'A', starting_side: 'left' },
+        { match_id: 'm_last_touch', player_id: 'B1', team: 'B', starting_side: 'right' },
+        { match_id: 'm_last_touch', player_id: 'B2', team: 'B', starting_side: 'left' },
+      ],
+      rallies: s.rallies,
+      live_state: s,
+    };
+
+    const profiles = computePlayerSkillProfiles(
+      [{ id: 'A1' }, { id: 'A2' }, { id: 'B1' }, { id: 'B2' }],
+      [match]
+    );
+
+    expect(profiles.get('B2')!.tagCounts.out).toBe(1);
+    expect(profiles.get('B1')!.tagCounts.out).toBeUndefined();
+    expect(profiles.get('A2')!.tagCounts.winner).toBe(1);
+    expect(profiles.get('A1')!.tagCounts.winner).toBeUndefined();
+  });
 });

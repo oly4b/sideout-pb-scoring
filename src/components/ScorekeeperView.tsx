@@ -150,6 +150,7 @@ export function ScorekeeperView({
   const [detailedStats, setDetailedStats] = useState(true);
   const [spectatorMode, setSpectatorMode] = useState(false);
   const [pendingTagSeq, setPendingTagSeq] = useState<number | null>(null);
+  const [pendingTagChoice, setPendingTagChoice] = useState<RallyOutcomeTag | null>(null);
   const [liveState, setLiveState] = useState<LiveGameState | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -453,23 +454,60 @@ export function ScorekeeperView({
     if (detailedStats) {
       const lastSeq = next.rallies[next.rallies.length - 1]?.seq ?? null;
       setPendingTagSeq(lastSeq);
+      setPendingTagChoice(null);
     } else if (pendingTagSeq !== null) {
       setPendingTagSeq(null);
+      setPendingTagChoice(null);
     }
     persistMatchState(activeMatch, next, next.winnerTeam !== null);
   };
 
-  const handleTagRally = (tag: RallyOutcomeTag) => {
-    if (!activeMatch || !liveState || pendingTagSeq === null) return;
-    const next = tagRallyOutcome(liveState, pendingTagSeq, tag);
-    setLiveState(next);
+  const closeTagPrompt = () => {
     setPendingTagSeq(null);
+    setPendingTagChoice(null);
+  };
+
+  const getTagTargetTeam = (tag: RallyOutcomeTag, rallyWinner: TeamId): TeamId => {
+    if (tag === 'net' || tag === 'out') {
+      return rallyWinner === 'A' ? 'B' : 'A';
+    }
+    return rallyWinner;
+  };
+
+  const getTeamPlayerIds = (team: TeamId): string[] => {
+    if (!activeMatch) return [];
+    return activeMatch.participants
+      .filter((p) => p.team === team)
+      .map((p) => p.player_id);
+  };
+
+  const handleTagRally = (tag: RallyOutcomeTag, playerId: string | null = null) => {
+    if (!activeMatch || !liveState || pendingTagSeq === null) return;
+    const next = tagRallyOutcome(liveState, pendingTagSeq, tag, playerId);
+    setLiveState(next);
+    closeTagPrompt();
     persistMatchState(activeMatch, next, next.winnerTeam !== null);
+  };
+
+  const handleSelectTagOption = (tag: RallyOutcomeTag) => {
+    if (!activeMatch || !liveState || pendingTagSeq === null) return;
+    const taggedRally = liveState.rallies.find((r) => r.seq === pendingTagSeq);
+    if (tag === 'ace' || tag === 'service_fault') {
+      handleTagRally(tag, taggedRally?.serving_player_id ?? null);
+      return;
+    }
+    const targetTeam = getTagTargetTeam(tag, taggedRally?.rally_winner ?? 'A');
+    const teamPlayers = getTeamPlayerIds(targetTeam);
+    if (liveState.gameType === 'singles' || teamPlayers.length <= 1) {
+      handleTagRally(tag, teamPlayers[0] ?? null);
+      return;
+    }
+    setPendingTagChoice(tag);
   };
 
   const handleUndo = () => {
     if (!activeMatch || !liveState || liveState.rallies.length === 0 || spectatorMode) return;
-    setPendingTagSeq(null);
+    closeTagPrompt();
     const teamAParts = activeMatch.participants.filter((p) => p.team === 'A');
     const teamBParts = activeMatch.participants.filter((p) => p.team === 'B');
     const next = undoLastRally(
@@ -1501,6 +1539,9 @@ export function ScorekeeperView({
                                 style={{ marginLeft: 6, fontSize: '0.7rem', padding: '1px 7px' }}
                               >
                                 {getOutcomeTagLabel(r.outcome_tag, lang)}
+                                {r.outcome_player_id
+                                  ? ` · ${playerDisplay(r.outcome_player_id, '')}`
+                                  : ''}
                               </span>
                             )}
                           </span>
@@ -1601,6 +1642,58 @@ export function ScorekeeperView({
               const renderSideTags = (sideTeam: TeamId) => {
                 const isWinner = sideTeam === rallyWinner;
                 const isServer = sideTeam === servingTeamDuringRally;
+
+                if (pendingTagChoice) {
+                  const targetTeam = getTagTargetTeam(pendingTagChoice, rallyWinner);
+                  if (sideTeam !== targetTeam) {
+                    return (
+                      <div className="fs-board-tag-stack">
+                        <span
+                          style={{
+                            fontSize: '0.82rem',
+                            fontWeight: 700,
+                            color: 'var(--ink-muted)',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {lang === 'ja'
+                            ? `「${getOutcomeTagLabel(pendingTagChoice, 'ja')}」を選択中`
+                            : `${getOutcomeTagLabel(pendingTagChoice, 'en')} selected`}
+                        </span>
+                      </div>
+                    );
+                  }
+                  const teamPlayers = getTeamPlayerIds(targetTeam);
+                  const tagLabel = getOutcomeTagLabel(pendingTagChoice, lang);
+                  return (
+                    <div className="fs-board-tag-stack">
+                      <div
+                        style={{
+                          fontSize: '0.84rem',
+                          fontWeight: 800,
+                          color: 'var(--ink-primary)',
+                          textAlign: 'center',
+                          lineHeight: 1.3,
+                        }}
+                      >
+                        {lang === 'ja'
+                          ? `最後のタッチは誰ですか？（${tagLabel}）`
+                          : `Who was the last touch? (${tagLabel})`}
+                      </div>
+                      {teamPlayers.map((pid) => (
+                        <button
+                          key={pid}
+                          type="button"
+                          className={`fs-board-tag-btn ${isWinner ? 'is-winner-tag' : 'is-error-tag'}`}
+                          onClick={() => handleTagRally(pendingTagChoice, pid)}
+                        >
+                          {playerDisplay(pid, pid)}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                }
+
                 const tagIds: RallyOutcomeTag[] = isWinner
                   ? isServer
                     ? ['ace', 'winner']
@@ -1619,7 +1712,7 @@ export function ScorekeeperView({
                           key={tagId}
                           type="button"
                           className={`fs-board-tag-btn ${isWinner ? 'is-winner-tag' : 'is-error-tag'}`}
-                          onClick={() => handleTagRally(tagId)}
+                          onClick={() => handleSelectTagOption(tagId)}
                         >
                           {label}
                         </button>
@@ -1628,6 +1721,10 @@ export function ScorekeeperView({
                   </div>
                 );
               };
+
+              const activeFooterTeam = pendingTagChoice
+                ? getTagTargetTeam(pendingTagChoice, rallyWinner)
+                : null;
 
               return (
                 <div className="fs-board-grid">
@@ -1641,22 +1738,46 @@ export function ScorekeeperView({
                     {renderSideTags('A')}
                     <div className="fs-board-tag-footer">
                       <span className={`fs-board-status-pill ${rallyWinner === 'A' ? 'is-active' : ''}`}>
-                        {rallyWinner === 'A'
+                        {activeFooterTeam === 'A'
                           ? lang === 'ja'
-                            ? `ラリー #${pendingTagSeq} 獲得`
-                            : `Won Rally #${pendingTagSeq}`
-                          : lang === 'ja'
-                            ? 'ミス・失点要因'
-                            : 'Fault / Error'}
+                            ? '最後のタッチは？'
+                            : 'Last touch?'
+                          : rallyWinner === 'A'
+                            ? lang === 'ja'
+                              ? `ラリー #${pendingTagSeq} 獲得`
+                              : `Won Rally #${pendingTagSeq}`
+                            : lang === 'ja'
+                              ? 'ミス・失点要因'
+                              : 'Fault / Error'}
                       </span>
-                      {rallyWinner !== 'A' && (
-                        <button
-                          type="button"
-                          className="fs-board-tag-skip"
-                          onClick={() => setPendingTagSeq(null)}
-                        >
-                          {lang === 'ja' ? 'スキップ' : 'Skip'}
-                        </button>
+                      {pendingTagChoice ? (
+                        activeFooterTeam === 'A' ? (
+                          <button
+                            type="button"
+                            className="fs-board-tag-skip"
+                            onClick={() => handleTagRally(pendingTagChoice, null)}
+                          >
+                            {lang === 'ja' ? 'チーム全体' : 'Team only'}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="fs-board-tag-skip"
+                            onClick={() => setPendingTagChoice(null)}
+                          >
+                            {lang === 'ja' ? '戻る' : 'Back'}
+                          </button>
+                        )
+                      ) : (
+                        rallyWinner !== 'A' && (
+                          <button
+                            type="button"
+                            className="fs-board-tag-skip"
+                            onClick={closeTagPrompt}
+                          >
+                            {lang === 'ja' ? 'スキップ' : 'Skip'}
+                          </button>
+                        )
                       )}
                     </div>
                   </div>
@@ -1671,22 +1792,46 @@ export function ScorekeeperView({
                     {renderSideTags('B')}
                     <div className="fs-board-tag-footer">
                       <span className={`fs-board-status-pill ${rallyWinner === 'B' ? 'is-active' : ''}`}>
-                        {rallyWinner === 'B'
+                        {activeFooterTeam === 'B'
                           ? lang === 'ja'
-                            ? `ラリー #${pendingTagSeq} 獲得`
-                            : `Won Rally #${pendingTagSeq}`
-                          : lang === 'ja'
-                            ? 'ミス・失点要因'
-                            : 'Fault / Error'}
+                            ? '最後のタッチは？'
+                            : 'Last touch?'
+                          : rallyWinner === 'B'
+                            ? lang === 'ja'
+                              ? `ラリー #${pendingTagSeq} 獲得`
+                              : `Won Rally #${pendingTagSeq}`
+                            : lang === 'ja'
+                              ? 'ミス・失点要因'
+                              : 'Fault / Error'}
                       </span>
-                      {rallyWinner !== 'B' && (
-                        <button
-                          type="button"
-                          className="fs-board-tag-skip"
-                          onClick={() => setPendingTagSeq(null)}
-                        >
-                          {lang === 'ja' ? 'スキップ' : 'Skip'}
-                        </button>
+                      {pendingTagChoice ? (
+                        activeFooterTeam === 'B' ? (
+                          <button
+                            type="button"
+                            className="fs-board-tag-skip"
+                            onClick={() => handleTagRally(pendingTagChoice, null)}
+                          >
+                            {lang === 'ja' ? 'チーム全体' : 'Team only'}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="fs-board-tag-skip"
+                            onClick={() => setPendingTagChoice(null)}
+                          >
+                            {lang === 'ja' ? '戻る' : 'Back'}
+                          </button>
+                        )
+                      ) : (
+                        rallyWinner !== 'B' && (
+                          <button
+                            type="button"
+                            className="fs-board-tag-skip"
+                            onClick={closeTagPrompt}
+                          >
+                            {lang === 'ja' ? 'スキップ' : 'Skip'}
+                          </button>
+                        )
                       )}
                     </div>
                   </div>
@@ -1895,8 +2040,19 @@ export function ScorekeeperView({
           return true;
         });
 
+        const targetTeam = pendingTagChoice
+          ? getTagTargetTeam(pendingTagChoice, taggedRally?.rally_winner ?? 'A')
+          : null;
+        const targetPlayers = targetTeam ? getTeamPlayerIds(targetTeam) : [];
+        const targetTeamName =
+          targetTeam === 'A'
+            ? activeMatch.team_a_name
+            : targetTeam === 'B'
+              ? activeMatch.team_b_name
+              : '';
+
         return (
-          <div className="modal-backdrop" onClick={() => setPendingTagSeq(null)}>
+          <div className="modal-backdrop" onClick={closeTagPrompt}>
             <div
               className="modal-card"
               style={{ maxWidth: 440 }}
@@ -1911,68 +2067,132 @@ export function ScorekeeperView({
                   type="button"
                   className="btn btn-ghost btn-icon"
                   aria-label={lang === 'ja' ? 'スキップ' : 'Skip'}
-                  onClick={() => setPendingTagSeq(null)}
+                  onClick={closeTagPrompt}
                 >
                   <X size={18} />
                 </button>
               </div>
 
               <div className="modal-body">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <span className="tag" style={{ alignSelf: 'flex-start' }}>
-                    {servingTeamWon
-                      ? lang === 'ja'
-                        ? 'サーブ側得点'
-                        : 'Serving team scored'
-                      : lang === 'ja'
-                        ? 'レシーブ側ブレイク'
-                        : 'Receiving team won rally'}
-                  </span>
-                  <div style={{ fontSize: '1.02rem', fontWeight: 800, color: 'var(--ink-primary)' }}>
-                    {lang === 'ja'
-                      ? `${rallyWinnerName} の決着方法は？`
-                      : `How did ${rallyWinnerName} win this rally?`}
-                  </div>
-                </div>
+                {pendingTagChoice ? (
+                  <>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span className="tag" style={{ alignSelf: 'flex-start' }}>
+                        {getOutcomeTagLabel(pendingTagChoice, lang)} · {targetTeamName}
+                      </span>
+                      <div style={{ fontSize: '1.02rem', fontWeight: 800, color: 'var(--ink-primary)' }}>
+                        {lang === 'ja'
+                          ? '最後のタッチは誰ですか？'
+                          : 'Who was the last touch?'}
+                      </div>
+                      <div style={{ fontSize: '0.82rem', color: 'var(--ink-secondary)' }}>
+                        {lang === 'ja'
+                          ? `${targetTeamName}で「${getOutcomeTagLabel(pendingTagChoice, 'ja')}」を打った選手を選択してください`
+                          : `Select the player on ${targetTeamName} who hit ${getOutcomeTagLabel(pendingTagChoice, 'en')}`}
+                      </div>
+                    </div>
 
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                    gap: 8,
-                  }}
-                >
-                  {visibleTags.map((tag, idx) => {
-                    const isOddLast = visibleTags.length % 2 === 1 && idx === visibleTags.length - 1;
-                    return (
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                        gap: 8,
+                      }}
+                    >
+                      {targetPlayers.map((pid) => (
+                        <button
+                          key={pid}
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{
+                            minHeight: 52,
+                            fontWeight: 800,
+                            justifyContent: 'center',
+                            fontSize: '0.92rem',
+                          }}
+                          onClick={() => handleTagRally(pendingTagChoice, pid)}
+                        >
+                          {playerDisplay(pid, pid)}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                       <button
-                        key={tag.id}
                         type="button"
-                        className="btn btn-secondary"
-                        style={{
-                          minHeight: 48,
-                          fontWeight: 700,
-                          justifyContent: 'center',
-                          fontSize: '0.88rem',
-                          gridColumn: isOddLast ? '1 / -1' : undefined,
-                        }}
-                        onClick={() => handleTagRally(tag.id)}
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setPendingTagChoice(null)}
                       >
-                        {lang === 'ja' ? tag.ja : tag.en}
+                        {lang === 'ja' ? '戻る' : 'Back'}
                       </button>
-                    );
-                  })}
-                </div>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => handleTagRally(pendingTagChoice, null)}
+                      >
+                        {lang === 'ja' ? '指定せず保存' : 'Skip (Team only)'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span className="tag" style={{ alignSelf: 'flex-start' }}>
+                        {servingTeamWon
+                          ? lang === 'ja'
+                            ? 'サーブ側得点'
+                            : 'Serving team scored'
+                          : lang === 'ja'
+                            ? 'レシーブ側ブレイク'
+                            : 'Receiving team won rally'}
+                      </span>
+                      <div style={{ fontSize: '1.02rem', fontWeight: 800, color: 'var(--ink-primary)' }}>
+                        {lang === 'ja'
+                          ? `${rallyWinnerName} の決着方法は？`
+                          : `How did ${rallyWinnerName} win this rally?`}
+                      </div>
+                    </div>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => setPendingTagSeq(null)}
-                  >
-                    {lang === 'ja' ? 'スキップ' : 'Skip'}
-                  </button>
-                </div>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                        gap: 8,
+                      }}
+                    >
+                      {visibleTags.map((tag, idx) => {
+                        const isOddLast = visibleTags.length % 2 === 1 && idx === visibleTags.length - 1;
+                        return (
+                          <button
+                            key={tag.id}
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{
+                              minHeight: 48,
+                              fontWeight: 700,
+                              justifyContent: 'center',
+                              fontSize: '0.88rem',
+                              gridColumn: isOddLast ? '1 / -1' : undefined,
+                            }}
+                            onClick={() => handleSelectTagOption(tag.id)}
+                          >
+                            {lang === 'ja' ? tag.ja : tag.en}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={closeTagPrompt}
+                      >
+                        {lang === 'ja' ? 'スキップ' : 'Skip'}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
