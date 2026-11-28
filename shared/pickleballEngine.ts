@@ -299,6 +299,10 @@ export function recordRally(
     serving_player_id: preServingPlayerId,
     receiving_player_id: preReceivingPlayerId,
     serving_side: preServingSide,
+    positions: {
+      teamA: { ...state.positions.teamA },
+      teamB: { ...state.positions.teamB },
+    },
     outcome_tag: null,
     outcome_player_id: null,
   };
@@ -338,6 +342,12 @@ export function undoLastRally(
   }
   // Preserve original timestamps/ids for remaining rallies
   rebuilt.rallies = remainingRallies;
+  if (popped.positions) {
+    rebuilt.positions = {
+      teamA: { ...popped.positions.teamA },
+      teamB: { ...popped.positions.teamB },
+    };
+  }
   rebuilt.redoStack = [
     {
       teamAScore: state.teamAScore,
@@ -840,6 +850,7 @@ export function getMatchRalliesWithTags(match: Pick<Match, 'rallies' | 'live_sta
       ...r,
       outcome_tag: r.outcome_tag ?? lr.outcome_tag ?? null,
       outcome_player_id: r.outcome_player_id ?? lr.outcome_player_id ?? null,
+      positions: r.positions ?? lr.positions ?? null,
       serving_player_id: r.serving_player_id ?? lr.serving_player_id ?? null,
       receiving_player_id: r.receiving_player_id ?? lr.receiving_player_id ?? null,
       serving_side: r.serving_side ?? lr.serving_side ?? null,
@@ -934,6 +945,12 @@ export function computePlayerSkillProfiles(
 
     for (let i = 0; i < rallies.length; i++) {
       const r = rallies[i];
+      if (r.positions) {
+        positions = {
+          teamA: { ...r.positions.teamA },
+          teamB: { ...r.positions.teamB },
+        };
+      }
       const serverTeam: TeamId =
         r.event_type === 'side_out' ? (r.serving_team === 'A' ? 'B' : 'A') : r.serving_team;
       const serverScore = serverTeam === 'A' ? prevA : prevB;

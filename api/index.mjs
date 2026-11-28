@@ -381,6 +381,10 @@ function recordRally(state, rallyWinner, matchId) {
     serving_player_id: preServingPlayerId,
     receiving_player_id: preReceivingPlayerId,
     serving_side: preServingSide,
+    positions: {
+      teamA: { ...state.positions.teamA },
+      teamB: { ...state.positions.teamB }
+    },
     outcome_tag: null,
     outcome_player_id: null
   };

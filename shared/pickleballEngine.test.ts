@@ -14,6 +14,7 @@ import {
   isUpsetMatch,
   recordRally,
   redoLastRally,
+  swapTeamBoxesManually,
   tagRallyOutcome,
   undoLastRally,
 } from './pickleballEngine';
@@ -715,5 +716,38 @@ describe('pickleballEngine', () => {
     expect(profiles.get('B1')!.tagCounts.out).toBeUndefined();
     expect(profiles.get('A2')!.tagCounts.winner).toBe(1);
     expect(profiles.get('A1')!.tagCounts.winner).toBeUndefined();
+  });
+
+  it('snapshots 4-box court positions per rally and preserves manual box swaps on undo', () => {
+    let s = createInitialLiveState({
+      gameType: 'doubles',
+      scoringMode: 'side_out',
+      targetScore: 11,
+      winByTwo: true,
+      initialServingTeam: 'A',
+      teamAPlayers: ['A1', 'A2'],
+      teamBPlayers: ['B1', 'B2'],
+    });
+
+    // Rally 1 with initial boxes
+    s = recordRally(s, 'A', 'm_pos');
+    expect(s.rallies[0].positions).toEqual({
+      teamA: { right: 'A1', left: 'A2' },
+      teamB: { right: 'B1', left: 'B2' },
+    });
+    // After point on serve, Team A swapped: left=A1, right=A2
+    expect(s.positions.teamA).toEqual({ right: 'A2', left: 'A1' });
+
+    // Manual box swap on Team B before Rally 2
+    s = swapTeamBoxesManually(s, 'B');
+    s = recordRally(s, 'A', 'm_pos');
+    expect(s.rallies[1].positions).toEqual({
+      teamA: { right: 'A2', left: 'A1' },
+      teamB: { right: 'B2', left: 'B1' },
+    });
+
+    // Undoing Rally 2 restores Team B's manually swapped boxes from Rally 2's snapshot
+    const undone = undoLastRally(s, 'A', ['A1', 'A2'], ['B1', 'B2']);
+    expect(undone.positions.teamB).toEqual({ right: 'B2', left: 'B1' });
   });
 });

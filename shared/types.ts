@@ -51,6 +51,7 @@ export interface RallyEvent {
   serving_player_id?: string | null;
   receiving_player_id?: string | null;
   serving_side?: CourtSide | null;
+  positions?: CourtPositions | null;
   outcome_tag?: RallyOutcomeTag | null;
   outcome_player_id?: string | null;
 }
